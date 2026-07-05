@@ -1,0 +1,24 @@
+# Secrets & credentials
+.credentials*
+**/.credentials*
+*.credentials
+credentials.json
+
+# Common secret / env files
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.*
+*.secret
+*_secret*
+id_rsa
+id_rsa.*
+*.token
+.npmrc
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
