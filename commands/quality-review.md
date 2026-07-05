@@ -16,11 +16,19 @@ e. **Project size** — count source files and estimate LOC to calibrate expecta
 
 Present a brief discovery summary before proceeding to the audit.
 
+For large projects (more than ~200 source files), run each of the 3 dimensions in its own
+parallel subagent — each returns its tables, evidence, and scores in the format below — and
+consolidate into the single report. A single context cannot hold a large codebase; fan-out
+keeps evidence quality up.
+
 ### Step 2: Audit — 3 Dimensions
 
 #### Dimension 1: Modularity & SOLID
 
-Score each principle 1–10 with specific evidence from the code:
+Score each principle 1–10 with specific evidence from the code. If a principle does not apply
+to the project's paradigm (e.g., Liskov Substitution or Interface Segregation in a codebase
+with no subtyping or interfaces), mark it **N/A** with a one-line justification instead of
+forcing a score; N/A rows are excluded from the dimension mean.
 
 | Principle | What to evaluate |
 |-----------|-----------------|
@@ -77,7 +85,7 @@ Structure the output as follows:
 ```
 # [Project Name] — Code Quality Review
 
-**Date:** [today's date]
+**Date:** [YYYY-MM-DD]
 
 ## Context
 [Brief project description + discovery summary from Step 1]
@@ -131,11 +139,12 @@ Use this rubric consistently:
 | 3–4   | Concerning — structural issues that impede development |
 | 1–2   | Critical — fundamental problems requiring immediate action |
 
-The overall score is the average of the 3 dimension scores, rounded to one decimal.
+A dimension's score is the arithmetic mean of its sub-scores (N/A rows excluded), rounded to
+one decimal. The overall score is the average of the 3 dimension scores, rounded to one decimal.
 
 ## Trend Comparison (optional)
 
-If $ARGUMENTS contains "compare" or a previous review file exists in the project (e.g., `docs/code-quality-review-*.md`), add a comparison section:
+If $ARGUMENTS contains "compare" or a previous review file exists in the project (e.g., `docs/code-quality-review-*.md`), add a comparison section. Compare against the lexicographically latest previous file — ISO dates make lexicographic order chronological:
 
 ```
 ## Trend vs Previous Review ([previous date])
@@ -154,8 +163,8 @@ If $ARGUMENTS contains "compare" or a previous review file exists in the project
 
 ## Rules
 
-- Do NOT skip any dimension or sub-dimension
+- Do NOT skip any dimension or sub-dimension (marking a principle N/A with a one-line justification, per the Dimension 1 rule, is allowed; silent skipping is not)
 - Do NOT give scores without citing specific evidence from the code (file names, patterns, examples)
 - Do NOT inflate scores — be honest and calibrated
 - Do NOT suggest improvements for things that are already working well — include a "What NOT to Change" section
-- Save the review output to `docs/code-quality-review-[today's date].md`
+- Save the review output to `docs/code-quality-review-YYYY-MM-DD.md` (ISO date). Create `docs/` if missing. A same-day rerun overwrites the same file
