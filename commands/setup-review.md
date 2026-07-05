@@ -4,14 +4,14 @@ Generate project-specific `/review` and `/ui-test` slash commands for the curren
 
 ### Step 1: Project Discovery
 
-Detect everything automatically — do NOT ask the user.
+Detect everything automatically — no discovery questions (the only permitted prompt is the overwrite confirmation in Rules).
 
 **Find these:**
 - **Tech stack & framework** — read `pyproject.toml`, `package.json`, `Cargo.toml`, `go.mod`, or equivalent. Identify the language(s), framework(s), and package manager.
 - **Architecture docs** — search for `ARCHITECTURE.md`, `CONTRIBUTING.md`, `docs/architecture*`, `docs/design*`, `docs/code-review*`.
 - **Coding guidelines** — search for `CLAUDE.md`, `.editorconfig`, linter configs, style guides.
 - **Test patterns** — find test files, identify framework (pytest, jest, vitest, etc.) and naming conventions.
-- **Main branch** — run `git branch -r` to determine `main`, `master`, or other.
+- **Main branch** — `git symbolic-ref --short refs/remotes/origin/HEAD` (strip the `origin/` prefix); if unset (e.g., no remote), fall back to local `main`, then `master` — first existing wins. If neither exists, use the currently checked-out branch and note that in the report.
 - **Project structure** — note directory layout and architectural pattern (layered, MVC, monolith, etc.).
 
 For **fullstack/monorepo** projects: identify each part separately (e.g., "React frontend in `client/`, FastAPI backend in `server/`").
@@ -198,7 +198,7 @@ Available commands:
 
 ## Rules
 
-- Do NOT ask the user any questions — auto-detect everything
+- No discovery questions — auto-detect everything. The ONLY permitted user prompt is the overwrite confirmation below
 - Do NOT modify any existing files besides `.claude/commands/review.md` and `.claude/commands/ui-test.md`
 - If `.claude/commands/review.md` already exists, warn the user and ask whether to overwrite or skip
 - Same for `.claude/commands/ui-test.md` — warn and ask if it exists

@@ -59,7 +59,7 @@ sections:
 ## Arguments
 
 - `--plan <path>` — alternate plan file (default `.dev-plan.md`)
-- `--from <N>` — start at section N. Assumes sections `1..N-1` are already merged in the integration branch. **/dev does not verify this — user responsibility.**
+- `--from <N>` — start at section N. Assumes sections `1..N-1` are already merged in the integration branch. **/dev does not verify this — user responsibility.** Conflicts with an existing `.dev-state.md` — combine with `--fresh`.
 - `--fresh` — delete state file and start over (requires confirmation)
 - `--base <branch>` — explicit trunk branch name (overrides autodetect). Default: autodetected at pre-flight from `git symbolic-ref --short refs/remotes/origin/HEAD`, with fallback to local `main` then `master`.
 
@@ -89,6 +89,7 @@ Source code never enters main-agent context. This bounds main-agent context rega
 0. Pre-cleanup: `rm -f .work-context.md` (leftover from any prior /work run that may have crashed mid-execution).
 1. **Resume vs fresh — decided FIRST**, before any tree/branch gates (a crashed run legitimately sits on a section branch, possibly with a dirty tree, so the fresh-mode gates below would wrongly block every resume):
    - If `--fresh` was passed → confirm with the user, delete `.dev-state.md`, continue to step 3.
+   - If `--from <N>` was passed and `.dev-state.md` exists (without `--fresh`) → **STOP, ask** — `--from` conflicts with an existing run; rerun with `--fresh --from <N>` to discard it.
    - If `.dev-state.md` exists and every section is `complete` → previous run already finished; **STOP**: report done, suggest `--fresh` for a new run.
    - If `.dev-state.md` exists otherwise → **resume mode** (step 2).
    - Else → **fresh mode** (step 3).
@@ -107,7 +108,8 @@ Source code never enters main-agent context. This bounds main-agent context rega
    2. Working tree clean? If not → **STOP, ask**.
    3. On `{base_branch}`? If not → **STOP, ask**.
    4. `.dev-plan.md` exists and parses into ≥1 section? If not → **STOP, ask**.
-   5. Baseline tests green on `{base_branch}`? If not → **STOP, ask**.
+   5. Dependencies present? `.claude/checks.sh`, `.claude/commands/work.md`, and `.claude/commands/review.md` all exist. Any missing → **STOP, ask** — /dev cannot run without them.
+   6. Baseline tests green on `{base_branch}`? If not → **STOP, ask**.
 4. **Fresh mode — choose integration branch and initialize:**
    - Choose integration branch:
      - If `dev_main` doesn't exist → create from `{base_branch}`, use it.
@@ -125,7 +127,7 @@ Source code never enters main-agent context. This bounds main-agent context rega
 
 ### Phase A — Section pre-flight (Main Agent + conditional Subagent)
 
-1. Re-read `.dev-plan.md`. Compute current hash of section N's body.
+1. Re-read `.dev-plan.md`. If it no longer parses, the section count changed, or `## Section {N}` is missing or renumbered → **STOP, ask** (only body edits to existing sections are supported mid-run). Otherwise compute current hash of section N's body.
 2. Compare to `original_text_hash` in state.
    - **Hashes match** → skip to step 4. Plan unchanged for this section.
    - **Hashes differ** → user edited this section's body during the run. Spawn the **Plan-Drift subagent** (below). If it returns `CONTRADICTS: yes` → **STOP, ask**. Otherwise update the stored hash and proceed.
@@ -243,7 +245,9 @@ Execute `.claude/commands/review.md` with these adjustments:
   * If a finding inside the diff cites a defect that originates from
     code outside the diff (e.g., the section calls a buggy merged
     function), it stays in `FINDINGS_TABLE` — the section depends
-    on that other code being correct, so it's a real blocker.
+    on that other code being correct, so it's a real blocker. Tag
+    such rows `outside-diff` in the `Origin` column; rows about code
+    authored or modified in this section's diff are `in-diff`.
 
 ## Output — return the structure below. Extra prose acceptable; required
 fields must be present.
@@ -254,8 +258,8 @@ MAJOR_COUNT: <N>
 MINOR_COUNT: <N>
 ARCHITECTURAL: yes | no
 FINDINGS_TABLE: |
-  # | Severity | Category | File:Line | Issue | Suggested Fix
-  <full deduped, verified table>
+  # | Severity | Category | Origin | File:Line | Issue | Suggested Fix
+  <full deduped, verified table; Origin = in-diff | outside-diff>
 DISMISSED_FALSE_POSITIVES: <count>
 OUT_OF_SCOPE_SUGGESTIONS: |
   Free-text list of optional improvements that touch files outside
@@ -275,10 +279,14 @@ exist, return the top 30 by severity and add a line `TRUNCATED: yes`.
 
 1. Run `git diff {integration_branch}...HEAD --name-only`. Save the
    result as `touched_files`.
-2. Parse `FINDINGS_TABLE` from Phase C output. Extract the `File`
-   column from each row (the path before `:line`).
-3. If any `File` from `FINDINGS_TABLE` is NOT in `touched_files`,
-   set `TOUCHES_PREVIOUS_SECTIONS = yes`. Otherwise `no`.
+2. Parse `FINDINGS_TABLE` from Phase C output. A row is
+   **outside-diff** if its `Origin` column says so, or its `File`
+   (the path before `:line`) is NOT in `touched_files`.
+3. If any outside-diff row has severity Critical or Major, set
+   `TOUCHES_PREVIOUS_SECTIONS = yes`. Otherwise `no`. (Minor
+   outside-diff rows stay visible in the report but do not stop the
+   run — stopping on any Minor that cites a merged file made false
+   STOPs routine.)
 
 Apply in order. First match wins:
 
@@ -376,7 +384,7 @@ Format is fixed so the user can scan it in two seconds.
 
 The orchestrator stops and asks the user **only** for these:
 
-1. Pre-flight (fresh mode): dirty tree, wrong branch, missing/empty plan, baseline red, or a state file from an already-finished run
+1. Pre-flight (fresh mode): dirty tree, wrong branch, missing/empty plan, missing dependencies (checks.sh / work.md / review.md), baseline red, or a state file from an already-finished run
 2. Pre-flight (fresh mode only): `dev_main` has unmerged commits — continue or start fresh?
 3. Plan edit detected and Plan-Drift agent reports contradiction
 4. Work agent: `NEEDS_SPLIT`, `NEEDS_DECISION`, or two consecutive `FAILED`

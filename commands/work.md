@@ -12,7 +12,7 @@ Break the task into small, focused sub-tasks (maximum 5). For each sub-task, lis
 
 Order sub-tasks so that interface-defining work (APIs, schemas, data models) comes first, and code that consumes those interfaces comes after.
 
-If the task requires more than 5 sub-tasks, tell me to split it into multiple `/work` runs.
+If the task requires more than 5 sub-tasks: without `--auto`, tell me to split it into multiple `/work` runs; with `--auto`, return `STATUS: NEEDS_SPLIT` with `BLOCKER: <why it does not fit in 5>` immediately — do not ask the user.
 
 If `$ARGUMENTS` contains `--auto`:
   - Skip the approval prompt. Proceed directly with the proposed sub-task list.
@@ -36,7 +36,7 @@ You are executing sub-task {{N}} of {{total}}: "{{subtask_description}}"
 ## Project Context
 - Working directory: {{cwd}}
 - Branch: {{branch_name}}
-- Read and follow all rules from CLAUDE.md in the project root
+- Read and follow all rules from CLAUDE.md in the project root (if it is missing or empty, this command file's rules are the only contract — note that in your report)
 
 ## Files to work with
 {{relevant_file_paths}}
@@ -50,7 +50,8 @@ If the file does not exist, this is the first sub-task.
 2. Implement the sub-task: {{subtask_description}}
 3. Write tests for your changes
 4. Run: pytest {{relevant_test_files}} (only tests related to your changes)
-5. Run: bash .claude/checks.sh lint
+5. Run: bash .claude/checks.sh lint — if `.claude/checks.sh` does not exist,
+   run `python -m ruff check .` instead and say so in your report
 6. If tests or checks fail, fix and re-run until clean
 
 ## Output format
@@ -71,13 +72,25 @@ After the subagent finishes, show me:
 - Test results (pass/fail)
 - Any decisions the subagent made
 
-#### c. Commit immediately — no approval needed
+#### c. If tests failed — fix BEFORE committing
+The commit step below requires green tests. If the subagent reported test failures:
+If `$ARGUMENTS` contains `--auto`:
+  - Spawn a fix subagent once with the error context.
+  - If tests still fail after that single fix attempt, stop /work and
+    return `STATUS: NEEDS_DECISION` with `BLOCKER: <one-line reason>`.
+    Do NOT commit the broken state.
+  - Do NOT ask the user — return control to the caller.
+Otherwise:
+  - Either spawn a new subagent with the error context to fix, or report
+    to me and ask how to proceed. Do NOT commit until tests pass.
+
+#### d. Commit on green — no approval needed
 Commit the changes with a focused message on the feature branch.
 Do NOT ask "Commit? Redo? Skip?" — commit automatically and continue to the next sub-task.
 
 > **NEVER merge or push without explicit user approval.** After all sub-tasks are done, ask the user before merging the feature branch or pushing to remote.
 
-#### d. Update context bridge file
+#### e. Update context bridge file
 Write `.work-context.md` in the project root (overwrite with full accumulated state).
 Keep it minimal — only three things:
 
@@ -92,16 +105,6 @@ Keep it minimal — only three things:
 
 Do NOT include information the next subagent can discover by reading the code itself.
 
-#### e. If tests failed
-If `$ARGUMENTS` contains `--auto`:
-  - Spawn a fix subagent once with the error context.
-  - If tests still fail after that single fix attempt, stop /work and
-    return `STATUS: NEEDS_DECISION` with `BLOCKER: <one-line reason>`.
-  - Do NOT ask the user — return control to the caller.
-Otherwise:
-  - Either spawn a new subagent with the error context to fix, or report
-    to me and ask how to proceed.
-
 #### f. If sub-task is rejected or skipped
 Do NOT run destructive cleanup automatically.
 Stop and ask the user for explicit approval before any cleanup command (including `git checkout .` or `git clean`).
@@ -110,6 +113,8 @@ If approved, clean up only files related to the rejected/skipped sub-task.
 ### 4. Summary
 After all sub-tasks are done:
 1. Run `bash .claude/checks.sh all` to verify everything works together (lint + security + full test suite).
+   If `.claude/checks.sh` does not exist, run `python -m pytest` and
+   `python -m ruff check .` directly and note the missing script in the summary.
    Skip this step when `$ARGUMENTS` contains `--auto` — the caller's verify
    gate runs these checks right after /work returns, so a duplicate run here
    is wasted work.
@@ -118,7 +123,7 @@ After all sub-tasks are done:
 4. Delete `.work-context.md`
 
 ## Rules
-- Do NOT ask for commit approval — commit and continue automatically after each sub-task
+- Do NOT ask for commit approval — commit and continue automatically after each sub-task, but only once its tests pass (Step 3.c runs before the commit)
 - Do NOT merge or push without explicit user approval
 - Do NOT skip the test step
 - Do NOT combine sub-tasks
@@ -131,7 +136,8 @@ After all sub-tasks are done:
   gate (Step 2), branch creation (Step 2), and the final full-pytest run
   (Step 4.1). All other gates remain in force — in particular, NEVER merge
   or push without explicit user approval, regardless of --auto.
-- Under --auto, a single test-fix attempt is allowed (Step 3.e). On second
+- Under --auto, a single test-fix attempt is allowed (Step 3.c). On second
   failure, /work returns `STATUS: NEEDS_DECISION` rather than asking the user.
+  A plan needing more than 5 sub-tasks returns `STATUS: NEEDS_SPLIT`.
 - /dev calls /work with --auto. Standalone use of --auto is also fine for
   small/well-scoped tasks where you trust the sub-task split.

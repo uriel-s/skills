@@ -8,7 +8,7 @@ not a prompt to re-run with looser criteria.
 
 Process:
 
-1. **Identify changes** — run `git diff main...HEAD --name-only` to get all changed files. Run `git diff main...HEAD --stat` for a summary. If no changes found against `main`, try `master`.
+1. **Identify changes** — determine the trunk branch first: `git symbolic-ref --short refs/remotes/origin/HEAD` (strip the `origin/` prefix); if unset, use local `main`, then `master`; if none exists, ask the user which branch to diff against. Then run `git diff <trunk>...HEAD --name-only` and `git diff <trunk>...HEAD --stat`. An empty diff against an existing trunk means "nothing to review" — report that and stop; do NOT silently fall back to a different branch.
 
 2. **Discover project rules** — search the repo for guideline files:
    - `CLAUDE.md`, `CONTRIBUTING.md`, `.editorconfig`, linter configs
@@ -68,41 +68,45 @@ Process:
 
    Present the final findings table + dismissed false positives table.
 
-5b. **Threat-model harm-path check** — for each Critical and Major
-    finding, write one sentence answering:
+5b. **Severity calibration ladder** — applied to each Critical and
+    Major finding, in order; the FIRST matching rule decides and
+    later rules are not consulted. Findings classified Minor in
+    Step 5 are never touched by this ladder.
 
-    "What concrete user-facing harm path does this open, given the
-     project's documented threat model (per the project's CLAUDE.md /
-     SECURITY.md / equivalent)?"
-
-    Rules:
-    - If you cannot articulate a concrete harm path within the threat
-      model: downgrade Critical → Major, or Major → Minor.
-    - Minor findings without a concrete harm path should be DROPPED,
-      not downgraded further.
-    - **EXCEPTION — Architecture-decision violations:** a finding that
-      violates a *specifically cited, numbered or named* architecture
-      decision (an ADR/decision-record entry or a named architectural
-      pattern documented as a hard rule in the project's design docs)
-      may stay at Major even without an articulated user-facing harm
-      path. The finding MUST cite the decision identifier or doc
-      section explicitly (e.g., "Decision #N: <name>"). Vague
-      invocations like "violates documented practice" do NOT qualify.
-      This exception does NOT apply to Critical — Critical still
-      requires present-day breakage even when an architecture
-      decision is violated.
-      Code style, naming conventions, docstring rules, type-hint
-      requirements, and testing conventions are NOT "architecture
-      decisions" for this purpose, even when they appear in
-      CLAUDE.md.
-    - Genuine Critical/Major findings OUTSIDE the documented threat
-      model and OUTSIDE the architecture-decision exception are
-      allowed only if the harm path is articulated explicitly. No
-      mechanical pass-through. No abstract "violates best practice"
-      reasoning.
-    - This rule applies to Critical/Major only. Existing Minor
-      classifications (style, partial test coverage) are NOT subject
-      to harm-path articulation.
+    0. **No threat-model document.** If the project has no documented
+       threat model (no CLAUDE.md / SECURITY.md / equivalent with
+       security or harm guidance), skip this ladder entirely, keep
+       the Step 5 severities, and add one line to the report: "No
+       threat model documented — 5b calibration skipped."
+    1. **Defined-Major exemption.** A false-passing test, a weak
+       assertion hiding a real bug, or a new feature/function/class
+       with no test coverage stays Major by definition (Step 5) — no
+       harm-path articulation required. These are future risks by
+       nature; that is exactly why Step 5 defines them as Major.
+    2. **Architecture-decision exception.** A finding that violates a
+       *specifically cited, numbered or named* architecture decision
+       (an ADR/decision-record entry or a named architectural pattern
+       documented as a hard rule in the project's design docs) stays
+       Major without a harm path. The finding MUST cite the decision
+       identifier or doc section explicitly (e.g., "Decision #N:
+       <name>"); vague "violates documented practice" does NOT
+       qualify. Code style, naming conventions, docstring rules,
+       type-hint requirements, and testing conventions are NOT
+       architecture decisions for this purpose, even when they
+       appear in CLAUDE.md. This exception never upholds Critical —
+       Critical always requires present-day breakage.
+    3. **Concrete harm-path test.** Write one sentence: "What
+       concrete user-facing harm path does this finding open?" The
+       harm path may lie inside OR outside the documented threat
+       model, but it must be concrete — no abstract "violates best
+       practice" reasoning. Articulated → severity stands. Not
+       articulable → downgrade one level (Critical → Major,
+       Major → Minor).
+    4. **Drop rule for downgraded findings.** A finding that arrived
+       at Minor via rule 3 is DROPPED from the report — it already
+       failed the concreteness test. Findings that were Minor from
+       Step 5 remain listed as Minor (they are not subject to this
+       ladder at all).
 
 6. **Sister-paths sweep** — launch ONE additional agent
    (sequentially, AFTER the three review agents from Step 3) with
@@ -110,6 +114,10 @@ Process:
 
    - Read the last 10 commits matching `fix(...)`:
          git log --grep="^fix" --oneline -n 10
+   - Skip fix commits that belong to the branch currently under
+     review (e.g., "fix: address review findings" commits created in
+     this run) — re-scanning them only re-raises findings that were
+     already reviewed.
    - For each fix pattern, check ONLY whether the same fix was
      applied to direct sister code paths — same module, same class
      family, same command/handler tier.
