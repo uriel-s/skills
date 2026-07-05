@@ -76,17 +76,27 @@ After the subagent finishes, show me:
 The commit step below requires green tests. If the subagent reported test failures:
 If `$ARGUMENTS` contains `--auto`:
   - Spawn a fix subagent once with the error context.
+  - If the fix succeeds (tests now green), continue to step d: the fix
+    is committed together with the sub-task's own changes, as that
+    sub-task's single commit (the fix subagent, like every subagent,
+    does not commit itself).
   - If tests still fail after that single fix attempt, stop /work and
     return `STATUS: NEEDS_DECISION` with `BLOCKER: <one-line reason>`.
     Do NOT commit the broken state.
   - Do NOT ask the user — return control to the caller.
 Otherwise:
   - Either spawn a new subagent with the error context to fix, or report
-    to me and ask how to proceed. Do NOT commit until tests pass.
+    to me and ask how to proceed. Do NOT commit until tests pass. Once
+    they pass, continue to step d as normal.
 
 #### d. Commit on green — no approval needed
 Commit the changes with a focused message on the feature branch.
 Do NOT ask "Commit? Redo? Skip?" — commit automatically and continue to the next sub-task.
+
+Never commit `.work-context.md` — it is scratch state, deleted at the end
+of the run. Stage the sub-task's files explicitly (no `git add -A` /
+`git add .`); if it got staged anyway, run `git reset .work-context.md`
+before committing.
 
 > **NEVER merge or push without explicit user approval.** After all sub-tasks are done, ask the user before merging the feature branch or pushing to remote.
 
@@ -130,7 +140,7 @@ After all sub-tasks are done:
 - Maximum 5 sub-tasks per session — split into multiple /work runs if needed
 - Each sub-task runs in its own fresh subagent for clean context
 - Subagents do NOT commit — the main agent commits automatically after each sub-task
-- Context bridge is persisted in `.work-context.md`, not passed inline
+- Context bridge is persisted in `.work-context.md`, not passed inline — and it is never committed (stage files explicitly, not `git add -A`)
 - If a sub-task is rejected or skipped, ask user approval before cleanup and avoid repo-wide destructive cleanup
 - The `--auto` flag suppresses three things in /work: the plan-approval
   gate (Step 2), branch creation (Step 2), and the final full-pytest run

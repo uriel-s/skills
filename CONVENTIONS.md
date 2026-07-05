@@ -42,6 +42,13 @@ Copies: `review.md` Step 3 agent specs; `dev.md` Phase C output contract.
 `Origin` = `in-diff` (code authored/modified in the reviewed diff) or `outside-diff` (defect
 originates in code outside the diff that the reviewed code depends on).
 
+`File:Line` = repo-relative path with forward slashes, byte-identical to `git diff
+--name-only` output (no `./` prefix, no absolute paths, no Windows drive letters or
+backslashes), then `:<line>` — e.g. `src/app/main.py:42`. Required because dev.md's Phase D
+machine-compares File values against `git diff --name-only`; Phase D additionally parses by
+stripping the trailing `:<digits>` suffix (last colon followed only by digits) and normalizes
+backslashes / `./` / absolute prefixes defensively.
+
 ## STATUS vocabulary (canonical)
 
 Copies: `work.md` (--auto returns), `dev.md` Phase B/C prompts and end-of-run signal.

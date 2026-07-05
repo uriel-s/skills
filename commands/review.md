@@ -23,7 +23,7 @@ Process:
    **Agent 1: Structure & Architecture**
    - Read: all changed files + any architecture/design docs found
    - Check: dependency direction, import hygiene, layer violations, module boundaries, `__init__.py` exports, cross-module coupling
-   - Return: findings table (# | Severity | Category | File:Line | Issue | Suggested Fix)
+   - Return: findings table (# | Severity | Category | File:Line | Issue | Suggested Fix; File = repo-relative path, forward slashes, exactly as `git diff --name-only` prints it, then `:<line>`)
 
    **Agent 2: Code Quality & Security**
    - Read: all changed files + any coding guidelines found

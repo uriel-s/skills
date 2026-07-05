@@ -214,10 +214,23 @@ Branch: {integration_branch}--section-{N}-{slug}
 Diff target: {integration_branch} (NOT {base_branch})
 
 ## Task
-Execute `.claude/commands/review.md` with these adjustments:
+Execute `.claude/commands/review.md` with these adjustments. review.md is
+written for standalone use; wherever it and this prompt disagree, THIS
+PROMPT WINS:
 - Use `git diff {integration_branch}...HEAD --name-only` and `--stat`
-- Run all 3 review agents per review.md
-- Do NOT offer to fix. Do NOT merge. Review only.
+- Run the 3 parallel review agents per review.md Step 3. SKIP Step 6
+  (sister-paths sweep) — under /dev it runs later instead, inside
+  /dev-finish's cumulative review of the whole integration branch.
+- SKIP review.md Step 7 (fix) and its "Maximum 2 review-fix cycles"
+  rule. Do NOT offer to fix. Do NOT merge. Review only — /dev has its
+  own fix phase with a 1-cycle budget.
+- `File:Line` format contract: repo-relative path with forward
+  slashes, byte-identical to how `git diff --name-only` prints it (no
+  `./` prefix, no absolute paths, no Windows drive letters or
+  backslashes), then a colon and the line number — e.g.
+  `src/app/main.py:42`. The orchestrator machine-compares File values
+  against `git diff --name-only` output; any other format corrupts
+  that comparison.
 - Tag each finding as "architectural" if and only if it involves at
   least one of:
   * Changing the signature (parameters, return type) of a function or
@@ -259,7 +272,9 @@ MINOR_COUNT: <N>
 ARCHITECTURAL: yes | no
 FINDINGS_TABLE: |
   # | Severity | Category | Origin | File:Line | Issue | Suggested Fix
-  <full deduped, verified table; Origin = in-diff | outside-diff>
+  <full deduped, verified table; Origin = in-diff | outside-diff;
+   File:Line per the format contract above (repo-relative, forward
+   slashes, `path:line`)>
 DISMISSED_FALSE_POSITIVES: <count>
 OUT_OF_SCOPE_SUGGESTIONS: |
   Free-text list of optional improvements that touch files outside
@@ -279,9 +294,16 @@ exist, return the top 30 by severity and add a line `TRUNCATED: yes`.
 
 1. Run `git diff {integration_branch}...HEAD --name-only`. Save the
    result as `touched_files`.
-2. Parse `FINDINGS_TABLE` from Phase C output. A row is
-   **outside-diff** if its `Origin` column says so, or its `File`
-   (the path before `:line`) is NOT in `touched_files`.
+2. Parse `FINDINGS_TABLE` from Phase C output. Extract each row's
+   `File` from the `File:Line` cell by stripping the trailing
+   `:<digits>` suffix — split on the LAST colon that is followed only
+   by digits, so a contract-violating absolute Windows path
+   (`C:\...:42`) cannot truncate to `C`. Then normalize defensively
+   before comparing: backslashes → `/`, strip a leading `./`, and if
+   the path is still absolute, strip the repo root prefix
+   (`git rev-parse --show-toplevel`). A row is **outside-diff** if its
+   `Origin` column says so, or its normalized `File` is NOT in
+   `touched_files`.
 3. If any outside-diff row has severity Critical or Major, set
    `TOUCHES_PREVIOUS_SECTIONS = yes`. Otherwise `no`. (Minor
    outside-diff rows stay visible in the report but do not stop the
