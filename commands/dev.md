@@ -48,9 +48,9 @@ started_at: <ISO timestamp>
 current_section: 3
 current_phase: review
 sections:
-  - n: 1, title: "...", slug: "...", status: complete, branch: dev_main/section-1-<slug>, merged_at: <ts>, original_text_hash: <sha>
-  - n: 2, title: "...", slug: "...", status: complete, branch: dev_main/section-2-<slug>, merged_at: <ts>, original_text_hash: <sha>
-  - n: 3, title: "...", slug: "...", status: in_progress, branch: dev_main/section-3-<slug>, original_text_hash: <sha>
+  - n: 1, title: "...", slug: "...", status: complete, branch: dev_main--section-1-<slug>, merged_at: <ts>, original_text_hash: <sha>
+  - n: 2, title: "...", slug: "...", status: complete, branch: dev_main--section-2-<slug>, merged_at: <ts>, original_text_hash: <sha>
+  - n: 3, title: "...", slug: "...", status: in_progress, branch: dev_main--section-3-<slug>, original_text_hash: <sha>
   - n: 4, title: "...", slug: "...", status: pending, original_text_hash: <sha>
 ```
 
@@ -87,24 +87,28 @@ Source code never enters main-agent context. This bounds main-agent context rega
 ## Pre-flight (Main Agent)
 
 0. Pre-cleanup: `rm -f .work-context.md` (leftover from any prior /work run that may have crashed mid-execution).
-1. **Determine `{base_branch}`** (the project's trunk):
-   - If `--base <branch>` was passed → use it. Verify the branch exists locally; if not → **STOP, ask**.
-   - Else autodetect: `git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@'`. If non-empty and the branch exists locally → use it.
-   - Else fallback: try local `main` first, then `master`. First existing wins.
-   - If still nothing found → **STOP, ask the user** to pass `--base <branch>` explicitly.
-   - **Display the chosen `{base_branch}` in the pre-flight log** so the user can interrupt if it's wrong (e.g. autodetect picked the wrong long-lived branch). On resume, use `base_branch` from `.dev-state.md` and skip this step.
-2. Working tree clean? If not → **STOP, ask**.
-3. On `{base_branch}`? If not → **STOP, ask**.
-4. `.dev-plan.md` exists and parses into ≥1 section? If not → **STOP, ask**.
-5. Baseline tests green on `{base_branch}`? If not → **STOP, ask**.
-6. **Resume vs fresh:**
-   - If `.dev-state.md` exists with an in-progress section → **resume mode** (step 7).
-   - Else → **fresh mode** (step 8).
-7. **Resume mode:**
-   - Read `integration_branch` and `base_branch` from state — do NOT re-choose; the run already owns them.
+1. **Resume vs fresh — decided FIRST**, before any tree/branch gates (a crashed run legitimately sits on a section branch, possibly with a dirty tree, so the fresh-mode gates below would wrongly block every resume):
+   - If `--fresh` was passed → confirm with the user, delete `.dev-state.md`, continue to step 3.
+   - If `.dev-state.md` exists and every section is `complete` → previous run already finished; **STOP**: report done, suggest `--fresh` for a new run.
+   - If `.dev-state.md` exists otherwise → **resume mode** (step 2).
+   - Else → **fresh mode** (step 3).
+2. **Resume mode:**
+   - Read `integration_branch` and `base_branch` from state — do NOT re-detect; the run already owns them. If the state file is unreadable, or a branch it records no longer exists → **STOP, ask** (stopping condition 9).
+   - If a merge is in progress (`MERGE_HEAD` exists) → `git merge --abort` first.
    - Append `RESUME at section N phase P` to log.
-   - Jump to that section, redo that phase from scratch.
-8. **Fresh mode:**
+   - Jump to `current_section` / `current_phase` and redo that phase from scratch per `## Recovery semantics`. (`current_phase: preflight` means: enter Phase A of `current_section` normally.) Steps 3–4 below are skipped entirely — resume cleanliness is handled by the recovery hard-reset, not by the fresh-mode gates.
+3. **Fresh-mode gates:**
+   1. **Determine `{base_branch}`** (the project's trunk):
+      - If `--base <branch>` was passed → use it. Verify the branch exists locally; if not → **STOP, ask**.
+      - Else autodetect: `git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@'`. If non-empty and the branch exists locally → use it.
+      - Else fallback: try local `main` first, then `master`. First existing wins.
+      - If still nothing found → **STOP, ask the user** to pass `--base <branch>` explicitly.
+      - **Display the chosen `{base_branch}` in the pre-flight log** so the user can interrupt if it's wrong (e.g. autodetect picked the wrong long-lived branch).
+   2. Working tree clean? If not → **STOP, ask**.
+   3. On `{base_branch}`? If not → **STOP, ask**.
+   4. `.dev-plan.md` exists and parses into ≥1 section? If not → **STOP, ask**.
+   5. Baseline tests green on `{base_branch}`? If not → **STOP, ask**.
+4. **Fresh mode — choose integration branch and initialize:**
    - Choose integration branch:
      - If `dev_main` doesn't exist → create from `{base_branch}`, use it.
      - If `dev_main` exists with **no** commits ahead of `{base_branch}` → reuse it (it's effectively empty).
@@ -152,8 +156,8 @@ Source code never enters main-agent context. This bounds main-agent context rega
    CONTRADICTS: yes | no
    REASON: <one line>
    ```
-4. Create branch `{integration_branch}/section-{N}-{slug}` off `{integration_branch}`. Checkout.
-5. Update state → `current_phase: work`. Append to log.
+4. Create branch `{integration_branch}--section-{N}-{slug}` off `{integration_branch}`. Checkout. (The `--` separator is deliberate: git cannot create branch `X/...` while branch `X` exists, so a `/`-based scheme would fail on the first section.)
+5. Update state → section {N} `status: in_progress`, `current_phase: work`. Append to log.
 
 ### Phase B — Work (Subagent)
 
@@ -162,7 +166,7 @@ Spawn fresh general-purpose Agent. **Prompt:**
 ```
 You are the Work agent for section {N} of /dev.
 
-Branch: {integration_branch}/section-{N}-{slug} (already checked out)
+Branch: {integration_branch}--section-{N}-{slug} (already checked out)
 Section title: {title}
 Section body:
 {body}
@@ -186,24 +190,25 @@ TESTS: <pass> passed, <fail> failed
 DECISIONS: <non-obvious choices, or "none">
 BLOCKER: <one line, only if STATUS != SUCCESS>
 
-Apply the Output size limits from the dev spec above.
+Output size limits: total response under 8KB; BLOCKER max 200 chars;
+DECISIONS max 5 items, max 100 chars each.
 ```
 
 **Main agent on return:**
 - `SUCCESS` → Phase C
 - `NEEDS_SPLIT` → **STOP**, surface BLOCKER
 - `NEEDS_DECISION` → **STOP**, surface BLOCKER
-- `FAILED` → retry **once**. Second failure → **STOP**.
+- `FAILED` → retry **once**. Before the retry: `git reset --hard {integration_branch}` on the section branch and `rm -f .work-context.md`, so the retry starts clean instead of on top of the failed attempt's partial commits. Second failure → **STOP**.
   *Note: retry is most useful for transient (tool/network) failures; logic failures usually fail again identically.*
 
 ### Phase C — Review (Subagent)
 
-Spawn fresh Agent. **Prompt:**
+Update state → `current_phase: review`. Spawn fresh Agent. **Prompt:**
 
 ```
 You are the Review agent for section {N} of /dev.
 
-Branch: {integration_branch}/section-{N}-{slug}
+Branch: {integration_branch}--section-{N}-{slug}
 Diff target: {integration_branch} (NOT {base_branch})
 
 ## Task
@@ -258,7 +263,9 @@ OUT_OF_SCOPE_SUGGESTIONS: |
   NOT classified by severity. Visible in the report but does not
   affect Phase D decisions. Write "none" if there are no suggestions.
 
-Apply the Output size limits from the dev spec above.
+Output size limits: total response under 8KB. FINDINGS_TABLE max 30 rows,
+each row max 200 chars (Issue + Suggested Fix combined); if more findings
+exist, return the top 30 by severity and add a line `TRUNCATED: yes`.
 ```
 
 ### Phase D — Decision matrix (Main Agent, deterministic)
@@ -276,7 +283,7 @@ Apply the Output size limits from the dev spec above.
 Apply in order. First match wins:
 
 ```
-CRITICAL_COUNT >= 2                  → STOP, ask user
+CRITICAL_COUNT >= 1                  → STOP, ask user
 TOUCHES_PREVIOUS_SECTIONS == yes     → STOP, ask user
 ARCHITECTURAL == yes                 → STOP, ask user
 MAJOR_COUNT > 6                      → STOP, ask user  # overwhelming = section likely broken
@@ -290,12 +297,12 @@ On STOP: write reason to log and state, output End-of-run signal `STOPPED`, exit
 
 ### Phase E — Fix (Subagent, only if Phase D routes here)
 
-Spawn fresh Agent. **Prompt:**
+Update state → `current_phase: fix`. Spawn fresh Agent. **Prompt:**
 
 ```
 You are the Fix agent for section {N} of /dev.
 
-Branch: {integration_branch}/section-{N}-{slug} (already checked out)
+Branch: {integration_branch}--section-{N}-{slug} (already checked out)
 
 ## Findings to fix
 {paste FINDINGS_TABLE — Major and Minor rows only;
@@ -319,7 +326,8 @@ SKIPPED: <count, with one-line reason each>
 TESTS: <pass>/<fail>
 BLOCKER: <one line, only if not SUCCESS>
 
-Apply the Output size limits from the dev spec above.
+Output size limits: total response under 8KB; BLOCKER max 200 chars;
+SKIPPED reasons max one line each.
 ```
 
 **Main agent on return:**
@@ -331,7 +339,7 @@ Apply the Output size limits from the dev spec above.
 
 ### Phase F — Verify gate (Main Agent)
 
-One deterministic check. Must be green to proceed.
+Update state → `current_phase: verify`. One deterministic check. Must be green to proceed.
 
 1. `bash .claude/checks.sh all` (runs lint, security, and the full test suite). Red → **STOP**.
 
@@ -339,8 +347,8 @@ Green → Phase G.
 
 ### Phase G — Merge to integration branch (Main Agent)
 
-1. Checkout `{integration_branch}`.
-2. `git merge --no-ff {integration_branch}/section-{N}-{slug} -m "merge: section {N} — {title}"`
+1. Update state → `current_phase: merge`. Checkout `{integration_branch}`.
+2. `git merge --no-ff {integration_branch}--section-{N}-{slug} -m "merge: section {N} — {title}"`
 3. Merge conflict → **STOP**.
 4. Run `bash .claude/checks.sh test` on integration branch post-merge. Red → **STOP**.
 5. Update state: section N → complete, `current_section: N+1`, `current_phase: preflight`.
@@ -368,11 +376,11 @@ Format is fixed so the user can scan it in two seconds.
 
 The orchestrator stops and asks the user **only** for these:
 
-1. Pre-flight: dirty tree, wrong branch, missing/empty plan, baseline red
+1. Pre-flight (fresh mode): dirty tree, wrong branch, missing/empty plan, baseline red, or a state file from an already-finished run
 2. Pre-flight (fresh mode only): `dev_main` has unmerged commits — continue or start fresh?
 3. Plan edit detected and Plan-Drift agent reports contradiction
 4. Work agent: `NEEDS_SPLIT`, `NEEDS_DECISION`, or two consecutive `FAILED`
-5. Review: ≥1 critical, OR architectural, OR touches previous sections, OR >8 major
+5. Review: any STOP rule in the Phase D decision matrix matched (the matrix is the single source of truth for review thresholds)
 6. Fix: `PARTIAL` with skips, or `FAILED`
 7. Tests or lint red at Phase F or post-merge
 8. Merge conflict on integration branch
@@ -398,8 +406,9 @@ A failed parse triggers one retry with the same prompt. Second failure → STOP.
   (Issue + Suggested Fix combined). If more findings exist, return the
   top 30 by severity and add a line `TRUNCATED: yes`.
 
-The fields above appear in different combinations across Phase B, C, and
-E prompts. These limits apply wherever the field appears.
+These limits are inlined verbatim into each subagent prompt (Phases B, C,
+E) — subagents never see this file, so the prompt copies are the
+authoritative text. When changing a limit, keep the prompt copies in sync.
 
 ## Recovery semantics
 
@@ -409,7 +418,7 @@ On /dev startup with an existing `.dev-state.md`:
 2. Redo that phase **from scratch**. No partial-progress detection.
    - **Before re-running Phase B:** hard-reset the section branch to the
      integration branch:
-     `git checkout {integration_branch}/section-{N}-{slug} && git reset --hard {integration_branch}`
+     `git checkout {integration_branch}--section-{N}-{slug} && git reset --hard {integration_branch}`
      This discards any partial commits from the interrupted run. /work
      then sees a clean tree and replans against current code, with no
      leak from the previous attempt. Also delete `.work-context.md` if
