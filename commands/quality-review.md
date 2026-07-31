@@ -50,11 +50,11 @@ Check these categories (adapt to the stack):
 
 | Category | What to evaluate |
 |----------|-----------------|
-| Documentation | Module/file docs, public API docs, inline comments (why not what) |
+| Documentation | Module/file docs, public API docs, inline comments (why not what). Scoring is a **band**, not monotonic: both under-documentation and over-documentation lose points. Docstring length should be proportional to the API surface it describes; a docstring longer than the code it documents is a navigation cost, not "Perfect" |
 | Naming | Descriptive names, consistent conventions, units in variable names |
 | Type safety | Type hints/annotations, generics usage, strict mode |
 | Security | No eval/exec, no hardcoded secrets, input validation, dependency safety |
-| Test conventions | Naming patterns, coverage of critical paths, regression tests for bugs |
+| Test conventions | Naming patterns, coverage of critical paths, regression tests for bugs. A high test:src ratio counts as a positive **only if the LOC is not inflated by copy-paste**. Check: `parametrize` usage vs many near-identical tests; helpers duplicated across test files (extract to conftest); and white-box coupling — tests reaching into a production object's private `_attrs` instead of its public API |
 | Code organization | Import structure, file size limits, logical grouping |
 
 Rate each as: **Perfect** / **Excellent** / **Minor gap** / **Major gap** — with specific examples.
@@ -68,8 +68,9 @@ Score each sub-dimension 1–10 with evidence:
 | Sub-dimension | What to evaluate |
 |---------------|-----------------|
 | **Changeability** | How easy is it to add a feature or swap a component? Look for coupling, hardcoded values |
+| **Reachability** | Does every public entry point (signal/function/class) have a live caller *outside its own module and outside tests*? Flag declared-but-never-fired signals, functions referenced only in tests, and whole layers with no runtime caller. Code that documentation matches but nothing invokes is dead, not correct |
 | **Debuggability** | Are errors observable? Logging quality, stack traces, error context |
-| **Testability** | Can components be tested in isolation? Dependency injection, mockability |
+| **Testability** | Can components be tested in isolation? Dependency injection, mockability. **Reverse check:** is that mockability achieved by bending production structure (re-export shims, seams, patch-only indirection that exists solely so tests can `patch` it)? If so it lowers this score — it does not raise it |
 | **Error Handling** | Are errors caught at the right level? Graceful degradation, user-facing messages |
 | **State Management** | Is state centralized and observable? Race conditions, dual update paths |
 | **Configuration** | External config support, environment handling, sensible defaults |
@@ -161,10 +162,36 @@ If $ARGUMENTS contains "compare" or a previous review file exists in the project
 - ...
 ```
 
+## Automated tripwires (optional)
+
+These are cheap checks that surface **candidates to read** — investigation hints, not pass/fail
+gates and not scores on their own. A ringing tripwire is a place to look; always confirm by
+reading the code before drawing a conclusion. The real leverage is the rubric wording above
+(Reachability, the Testability reverse check, the doc band) — it changes *what you go looking
+for*; these greps just make the first candidates cheap to find. Adapt patterns to the stack.
+
+```bash
+# Dead signal — declared but never emitted (PySide/Qt example):
+for s in $(grep -rhoE "\w+ = Signal\(" src --include=*.py | grep -oE "^\w+"); do
+  grep -rq "$s\.emit" src --include=*.py || echo "DEAD SIGNAL: $s"
+done
+# Test bloat — low parametrize against many test functions (read the near-identical ones):
+echo "parametrize=$(grep -rhoE 'parametrize' tests | wc -l) / tests=$(grep -rhE 'def test_' tests | wc -l)"
+# Prod<->test seams — production kept awkward to serve tests:
+grep -rniE "re-export|for (the )?tests|monkeypatch|do not (tidy|inline|remove)" src --include=*.py
+```
+
+White-box test coupling (tests reaching into private `_attrs`) is **not reliably greppable** —
+variable names differ across projects (`view`, `panel`, `dlg`, `svc`, …) and naive patterns
+drown in `patch("pkg.mod._private")` target strings and private-function-under-test calls.
+Instead, **read a sample of the largest test files** and note direct access to production
+objects' private members.
+
 ## Rules
 
 - Do NOT skip any dimension or sub-dimension (marking a principle N/A with a one-line justification, per the Dimension 1 rule, is allowed; silent skipping is not)
 - Do NOT give scores without citing specific evidence from the code (file names, patterns, examples)
 - Do NOT inflate scores — be honest and calibrated
 - Do NOT suggest improvements for things that are already working well — include a "What NOT to Change" section
+- Before listing anything under "What NOT to Change", verify it has a live caller — never protect a layer, class, or function you have not confirmed is actually reached at runtime. Dead code belongs in the improvements list (delete it), never in the preserve list
 - Save the review output to `docs/code-quality-review-YYYY-MM-DD.md` (ISO date). Create `docs/` if missing. A same-day rerun overwrites the same file
