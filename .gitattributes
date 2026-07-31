@@ -1,0 +1,8 @@
+# core.autocrlf=true is set globally on this machine, which rewrites the WORKING
+# COPY to CRLF on checkout. Deployment copies files straight from the working copy
+# into ~/.claude/, so without this the deployed files drift to CRLF — and checks.sh
+# is a bash script: CRLF makes it die with `$'\r': command not found`.
+# Everything here stays LF on disk, not just in git.
+* text=auto eol=lf
+*.sh text eol=lf
+*.md text eol=lf
