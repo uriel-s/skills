@@ -77,7 +77,7 @@ copy inlined in `setup-project.md` Step 2 must stay byte-identical to `templates
 
 | Subcommand | Runs | Notes |
 |---|---|---|
-| `test` | `python -m pytest` | full suite; `QT_QPA_PLATFORM=offscreen` for headless Qt |
+| `test` | `python -m pytest "$@"` | full suite by default; trailing args narrow it to specific paths. `QT_QPA_PLATFORM=offscreen` for headless Qt |
 | `lint` | `python -m ruff check <src> <tests>` | no auto-fix |
 | `format` | `python -m ruff format --check <src> <tests>` | check only, never rewrites |
 | `arch` | `lint-imports` | SKIP if import-linter missing |
@@ -96,6 +96,11 @@ directly and report the degradation.
 
 Only `all`, `test`, and `lint` are invoked by the command files today; the rest exist for
 manual use and for `all` to aggregate.
+
+Nothing may invoke `pytest` directly — `checks.sh test <paths>` covers the narrow-run case, and
+bypassing it silently drops `QT_QPA_PLATFORM=offscreen`. The one sanctioned exception is
+`dev.md`'s fix phase calling `ruff check --fix`: `checks.sh` is a verification contract and
+never rewrites files, so auto-fix has no subcommand by design.
 
 ## Trunk detection (canonical algorithm)
 

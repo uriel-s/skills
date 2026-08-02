@@ -20,7 +20,9 @@ run_format() { python -m ruff format --check "$SRC" "$TESTS"; }
 run_arch()   { if command -v lint-imports >/dev/null 2>&1; then lint-imports; else echo "SKIP: import-linter not installed"; fi; }
 run_types()  { if have mypy; then python -m mypy "$SRC"; else echo "SKIP: mypy not installed"; fi; }
 # QT_QPA_PLATFORM is harmless on non-GUI projects and required for headless Qt.
-run_test()   { QT_QPA_PLATFORM=offscreen python -m pytest; }
+# Extra args narrow the run to specific paths (`checks.sh test tests/test_foo.py`),
+# so callers never need to bypass this wrapper and lose the env var.
+run_test()   { QT_QPA_PLATFORM=offscreen python -m pytest "$@"; }
 
 run_sec() {
   local rc=0
@@ -41,7 +43,7 @@ run_all() {
 }
 
 case "${1:-all}" in
-  test)   run_test ;;
+  test)   shift; run_test "$@" ;;
   lint)   run_lint ;;
   format) run_format ;;
   arch)   run_arch ;;

@@ -49,7 +49,9 @@ If the file does not exist, this is the first sub-task.
 1. Read the relevant files listed above
 2. Implement the sub-task: {{subtask_description}}
 3. Write tests for your changes
-4. Run: pytest {{relevant_test_files}} (only tests related to your changes)
+4. Run: bash .claude/checks.sh test {{relevant_test_files}} (only tests related
+   to your changes) — if `.claude/checks.sh` does not exist, run
+   `python -m pytest {{relevant_test_files}}` instead and say so in your report
 5. Run: bash .claude/checks.sh lint — if `.claude/checks.sh` does not exist,
    run `python -m ruff check .` instead and say so in your report
 6. If tests or checks fail, fix and re-run until clean
