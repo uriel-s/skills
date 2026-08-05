@@ -3,9 +3,10 @@ Run a complete UI/UX quality check on the current project. $ARGUMENTS
 ## Step 0: Discovery
 
 If `.claude/project-params.md` exists (written by /setup-project), read its `## UI layer`
-section and use it as a discovery shortcut — re-verify cheaply instead of searching from
-scratch; if the project has drifted, trust what you find over the list. If it says the project
-has no UI layer, report that and stop. Otherwise detect:
+section **and** its `Framework-specific review checks` line — Step 2 needs both — and use them
+as a discovery shortcut: re-verify cheaply instead of searching from scratch; if the project
+has drifted, trust what you find over the list. If `## UI layer` says the project has no UI
+layer, report that and stop. Otherwise detect:
 
 - **UI framework** — PySide6/PyQt/tkinter (Python imports), React/Vue/Svelte/Angular
   (package.json). If NO UI layer is found → report "No UI layer detected — nothing to check"

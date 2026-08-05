@@ -112,7 +112,7 @@ script but WARN prominently in the report — `lint` and `format` will fail unti
 Note for existing projects: this template's `all` is STRICTER than the pre-2026-07-31 one —
 it adds `ruff format --check`, and it no longer stops at the first failure. A project that was
 green before can legitimately go red on formatting the first time. Report that as the
-project's state; do not fix it here (Step 3 rules apply).
+project's state; do not fix it here (Step 4 rules apply).
 
 ## Step 3: Generate `.claude/project-params.md`
 

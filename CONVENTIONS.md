@@ -21,8 +21,10 @@ copy in the same change.
 - Every field written into `project-params.md` must have a named reader above. A field nobody
   reads is the exact defect that got `/setup-review` deleted — when adding one, cite its
   consumer here or leave it out.
-- The cache is read by the ORCHESTRATOR only. Subagents never read files at runtime, so each
-  consumer must inline the relevant parameters into its agent prompts (`review.md` Step 2,
+- Only the agent EXECUTING a command file reads the cache — never the leaf agents it spawns.
+  (Under `/dev` that executing agent is itself a subagent; the rule is about position in the
+  tree, not about being a subagent.) Leaf agents get no file access to it, so each consumer
+  must inline the relevant parameters into its agent prompts (`review.md` Step 2,
   `ui-test.md` Step 2).
 - Project params are a shortcut, never authoritative: every consumer re-verifies cheaply and
   trusts what it finds over the cache. A missing `project-params.md` degrades to full
@@ -123,9 +125,14 @@ never rewrites files, so auto-fix has no subcommand by design.
 Copies: `dev.md` pre-flight, `review.md` Step 1, `setup-project.md` Step 1.
 
 1. Explicit override (`--base`) if given → verify it exists.
-2. `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`) if set and exists.
-3. Local `main`, then local `master` — first existing wins.
-4. Otherwise: ask the user (or, for non-interactive discovery, use the current branch + note).
+2. `Trunk branch` from `.claude/project-params.md` if present → verify the branch exists locally.
+3. `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`) if set and exists.
+4. Local `main`, then local `master` — first existing wins.
+5. Otherwise: ask the user (or, for non-interactive discovery, use the current branch + note).
+
+Steps 1 and 2 are conditional on the call site, and a site omitting one is correct, not
+drifted: only `/dev` accepts `--base`, and only `review.md` reads the cache (`setup-project.md`
+WRITES that field, so it cannot read it). Every site implements steps 3–5.
 
 ## Branch naming (/dev)
 
