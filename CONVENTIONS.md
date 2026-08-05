@@ -16,7 +16,14 @@ copy in the same change.
   no per-project reinstall step and nothing that can drift.
 - **Per-project data:** `/setup-project` writes exactly two files — `.claude/checks.sh` (the
   toolchain contract) and `.claude/project-params.md` (a discovery cache read by `review.md`
-  Step 2 and `ui-test.md` Step 0). Both are regenerable; neither is hand-maintained.
+  Step 1 (trunk) and Step 2 (rules), and `ui-test.md` Step 0). Both are regenerable; neither is
+  hand-maintained.
+- Every field written into `project-params.md` must have a named reader above. A field nobody
+  reads is the exact defect that got `/setup-review` deleted — when adding one, cite its
+  consumer here or leave it out.
+- The cache is read by the ORCHESTRATOR only. Subagents never read files at runtime, so each
+  consumer must inline the relevant parameters into its agent prompts (`review.md` Step 2,
+  `ui-test.md` Step 2).
 - Project params are a shortcut, never authoritative: every consumer re-verifies cheaply and
   trusts what it finds over the cache. A missing `project-params.md` degrades to full
   discovery, so it is a warning, never a blocker.

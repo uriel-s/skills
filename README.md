@@ -35,12 +35,25 @@ Type `/` in Claude Code to confirm they show up.
 | `/ui-test` | UI/UX check of the running app |
 | `/red-team` | Tries to kill an idea *before* you build it — redundant? over-engineered? |
 | `/learn` | Pulls one engineering lesson out of what you just changed |
-| `/setup-project` | Generates `.claude/checks.sh` for a Python project — run once per project |
-| `/setup-review` | Installs project-specific `/review` and `/ui-test` from the master templates |
+| `/setup-project` | Sets a Python project up for all of the above — run once per project |
 
 `/red-team` and `/learn` are manual only — nothing calls them automatically.
 
 ## Per-project setup
+
+Run `/setup-project` once in a new project. It writes two files, and nothing else:
+
+| File | Who reads it |
+|---|---|
+| `.claude/checks.sh` | `/work`, `/dev`, `/dev-finish` — how to test and lint this project |
+| `.claude/project-params.md` | `/review`, `/ui-test` — a discovery cache: trunk branch, doc paths, test layout, UI framework |
+
+The commands themselves are never copied into your project — they stay global in
+`~/.claude/commands/`, so editing one here applies everywhere at once. `project-params.md` is
+only a shortcut: every command re-verifies it cheaply and trusts what it actually finds, so a
+missing or stale one costs speed, never correctness.
+
+### checks.sh
 
 `/work` and `/dev` don't know how to test your project. They call `.claude/checks.sh`
 instead, and `/setup-project` generates it from [templates/checks.sh](templates/checks.sh):
@@ -92,3 +105,14 @@ Copy-Item commands\*.md "$env:USERPROFILE\.claude\commands\" -Force
 
 Easy to forget in the other direction too — edit `~/.claude/commands/` directly and this repo
 silently falls behind. That has already happened once, for two weeks. Commit, then deploy.
+
+**Deleting a command needs a second step.** `Copy-Item` only ever adds and overwrites — it
+never removes. A command you delete from `commands/` keeps working in every project until you
+also delete it from the deployment:
+
+```powershell
+Remove-Item "$env:USERPROFILE\.claude\commands\<name>.md"
+```
+
+Miss that step and the repo says a command is gone while `/` still offers it. To check what is
+actually deployed: `Get-ChildItem "$env:USERPROFILE\.claude\commands\"`.

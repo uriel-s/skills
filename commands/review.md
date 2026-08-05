@@ -8,7 +8,7 @@ not a prompt to re-run with looser criteria.
 
 Process:
 
-1. **Identify changes** — determine the trunk branch first: `git symbolic-ref --short refs/remotes/origin/HEAD` (strip the `origin/` prefix); if unset, use local `main`, then `master`; if none exists, ask the user which branch to diff against. Then run `git diff <trunk>...HEAD --name-only` and `git diff <trunk>...HEAD --stat`. An empty diff against an existing trunk means "nothing to review" — report that and stop; do NOT silently fall back to a different branch.
+1. **Identify changes** — determine the trunk branch first. If `.claude/project-params.md` exists and names a `Trunk branch`, verify that branch exists locally and use it; otherwise autodetect: `git symbolic-ref --short refs/remotes/origin/HEAD` (strip the `origin/` prefix); if unset, use local `main`, then `master`; if none exists, ask the user which branch to diff against. Then run `git diff <trunk>...HEAD --name-only` and `git diff <trunk>...HEAD --stat`. An empty diff against an existing trunk means "nothing to review" — report that and stop; do NOT silently fall back to a different branch.
 
 2. **Discover project rules** — if `.claude/project-params.md` exists (written by
    /setup-project), read it first and use it as a discovery shortcut: re-verify its paths

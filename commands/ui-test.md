@@ -21,6 +21,10 @@ If no UI tests exist, skip and say so in the report — do not fail the run.
 
 ## Step 2: Launch 2 agents in parallel
 
+Inline the Step 0 findings — UI file paths, style definition paths, and the framework-specific
+checks — directly into both agent prompts. Subagents never read `.claude/project-params.md`
+themselves; anything not passed through is lost.
+
 **Agent 1 — UX Review.** Read all UI files. Check:
 - Feedback states — loading, success, error for every user action
 - Empty states — what the user sees with no data, in every view/component
