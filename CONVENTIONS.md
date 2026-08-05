@@ -11,10 +11,19 @@ copy in the same change.
 - **Source of truth:** this repo (`commands/*.md`), versioned in git.
 - **Live deployment:** `~/.claude/commands/` (global — available in every project). Deploy by
   copying `commands/*.md` there after committing.
-- **Per-project copies:** `/setup-review` INSTALLS the master `review.md` / `ui-test.md` into a
-  project's `.claude/commands/` with a version stamp + generated parameters section. Project
-  copies shadow the global command by design; the stamp lets `/setup-review` detect drift.
-- Never hand-edit an installed project copy — rerun `/setup-review`.
+- **No per-project command copies.** Commands are never copied into a project's
+  `.claude/commands/`. A master edit therefore takes effect in every project immediately, with
+  no per-project reinstall step and nothing that can drift.
+- **Per-project data:** `/setup-project` writes exactly two files — `.claude/checks.sh` (the
+  toolchain contract) and `.claude/project-params.md` (a discovery cache read by `review.md`
+  Step 2 and `ui-test.md` Step 0). Both are regenerable; neither is hand-maintained.
+- Project params are a shortcut, never authoritative: every consumer re-verifies cheaply and
+  trusts what it finds over the cache. A missing `project-params.md` degrades to full
+  discovery, so it is a warning, never a blocker.
+
+Superseded (2026-08-05): `/setup-review` installed stamped copies of `review.md` / `ui-test.md`
+into each project. It was removed — `review.md` never read the parameters section it generated,
+so the forked copies cost drift-detection machinery for no benefit.
 
 ## Severity ladder (canonical)
 
@@ -104,7 +113,7 @@ never rewrites files, so auto-fix has no subcommand by design.
 
 ## Trunk detection (canonical algorithm)
 
-Copies: `dev.md` pre-flight, `review.md` Step 1, `setup-review.md` Step 1.
+Copies: `dev.md` pre-flight, `review.md` Step 1, `setup-project.md` Step 1.
 
 1. Explicit override (`--base`) if given → verify it exists.
 2. `git symbolic-ref --short refs/remotes/origin/HEAD` (strip `origin/`) if set and exists.

@@ -10,13 +10,18 @@ Process:
 
 1. **Identify changes** — determine the trunk branch first: `git symbolic-ref --short refs/remotes/origin/HEAD` (strip the `origin/` prefix); if unset, use local `main`, then `master`; if none exists, ask the user which branch to diff against. Then run `git diff <trunk>...HEAD --name-only` and `git diff <trunk>...HEAD --stat`. An empty diff against an existing trunk means "nothing to review" — report that and stop; do NOT silently fall back to a different branch.
 
-2. **Discover project rules** — search the repo for guideline files:
+2. **Discover project rules** — if `.claude/project-params.md` exists (written by
+   /setup-project), read it first and use it as a discovery shortcut: re-verify its paths
+   cheaply instead of searching from scratch, and if the project has drifted, trust what you
+   find over the list. Otherwise, search the repo for guideline files:
    - `CLAUDE.md`, `CONTRIBUTING.md`, `.editorconfig`, linter configs
    - Architecture docs (`ARCHITECTURE.md`, `docs/architecture*`, `docs/design*`)
    - Any `docs/code-review-template.md` or similar review guidelines
    - Test conventions (look at existing tests for patterns)
 
    Use whatever you find to calibrate the review. If a project has its own review template, follow it.
+   Pass the relevant parameters (framework-specific checks, test conventions, doc paths) into
+   the agent prompts in Step 3 — subagents do not read this file themselves.
 
 3. **Launch 3 agents in parallel** to review all changed files (a 4th agent runs sequentially in Step 6):
 

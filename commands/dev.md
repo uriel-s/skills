@@ -108,7 +108,7 @@ Source code never enters main-agent context. This bounds main-agent context rega
    2. Working tree clean? If not → **STOP, ask**.
    3. On `{base_branch}`? If not → **STOP, ask**.
    4. `.dev-plan.md` exists and parses into ≥1 section? If not → **STOP, ask**.
-   5. Dependencies present? `.claude/checks.sh`, `.claude/commands/work.md`, and `.claude/commands/review.md` all exist. Any missing → **STOP, ask** — /dev cannot run without them.
+   5. Dependencies present? `.claude/checks.sh` exists. Missing → **STOP, ask** — /dev cannot run without it; run /setup-project first. (`work.md` and `review.md` are global commands in `~/.claude/commands/`, not project files — do not check for project copies.) If `.claude/project-params.md` is missing, warn but continue: /review falls back to searching the repo from scratch.
    6. Baseline tests green on `{base_branch}`? If not → **STOP, ask**.
 4. **Fresh mode — choose integration branch and initialize:**
    - Choose integration branch:
@@ -174,7 +174,7 @@ Section body:
 {body}
 
 ## Task
-Execute `.claude/commands/work.md --auto` for the section above.
+Execute the `/work` command (`~/.claude/commands/work.md`) with `--auto` for the section above.
 - The --auto flag suppresses the plan-approval gate per work.md.
 - Maximum 5 sub-tasks. If the section needs more, return STATUS=NEEDS_SPLIT.
 - Do NOT merge. Do NOT push. Stay on the section branch.
@@ -214,7 +214,7 @@ Branch: {integration_branch}--section-{N}-{slug}
 Diff target: {integration_branch} (NOT {base_branch})
 
 ## Task
-Execute `.claude/commands/review.md` with these adjustments. review.md is
+Execute the `/review` command (`~/.claude/commands/review.md`) with these adjustments. review.md is
 written for standalone use; wherever it and this prompt disagree, THIS
 PROMPT WINS:
 - Use `git diff {integration_branch}...HEAD --name-only` and `--stat`
@@ -406,7 +406,7 @@ Format is fixed so the user can scan it in two seconds.
 
 The orchestrator stops and asks the user **only** for these:
 
-1. Pre-flight (fresh mode): dirty tree, wrong branch, missing/empty plan, missing dependencies (checks.sh / work.md / review.md), baseline red, or a state file from an already-finished run
+1. Pre-flight (fresh mode): dirty tree, wrong branch, missing/empty plan, missing dependencies (checks.sh), baseline red, or a state file from an already-finished run
 2. Pre-flight (fresh mode only): `dev_main` has unmerged commits — continue or start fresh?
 3. Plan edit detected and Plan-Drift agent reports contradiction
 4. Work agent: `NEEDS_SPLIT`, `NEEDS_DECISION`, or two consecutive `FAILED`

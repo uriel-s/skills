@@ -13,7 +13,7 @@ branch and stops; this command takes the integration branch the rest of the way.
 
 ## Step 1 — Final review
 
-Run `.claude/commands/review.md` on the integration branch, diffing against `{base_branch}`
+Run the `/review` command (`~/.claude/commands/review.md`) on the integration branch, diffing against `{base_branch}`
 (the run's full cumulative diff — per-section reviews used a single fix cycle each, so this
 catches regressions that slipped between sections). Present the findings table.
 
