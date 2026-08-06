@@ -53,9 +53,20 @@ because a task description merely *mentioned* `--auto`.
 8. `git rev-list --count HEAD..origin/{base}` > 0 → the branch is behind. **Warn, do not
    stop**, and carry the count into Step 5: green local checks say nothing about the merge
    result, and GitHub does not test the merge.
-9. `.dev-state.md` present? Read `integration_branch`, `base_branch`, and the sections.
-   Absent is normal. Do **not** require every section to be `complete` — incomplete sections
-   produce a draft PR (Step 4), not a stop.
+9. **Decide whether there is a LIVE `/dev` run, once, here.** Everything downstream that reads
+   `.dev-plan.md`, `.dev-state.md` or `.dev-log.md` depends on this answer.
+
+   The run is **live** only if `.dev-state.md` exists *and* its `integration_branch` is the
+   branch you are on. Then read `integration_branch`, `base_branch` and the sections; absent is
+   normal, and incomplete sections produce a draft PR (Step 4), never a stop.
+
+   Otherwise the run is **stale**: ignore all three files completely and treat this as a plain
+   `/work` branch. All three are gitignored, so they outlive the run that wrote them — a plan
+   and state from a run merged days ago are still sitting on disk, and nothing but this check
+   ties them to the branch in front of you. (Live defect, 2026-08-06: a leftover
+   plan would have named a one-commit typo fix
+   `<login>/plan-quality-review-2026-08-05-follow-`, titled the PR after already-merged work,
+   and described it with that run's sections.)
 
 ## Step 1 — Checks
 
@@ -148,18 +159,22 @@ else removed, and a file count in Step 5 that does not describe the diff being a
    branches collide there. In that case **warn**, ignore the upstream, and fall through to
    rule 3.
 2. `--branch <name>` → verbatim.
-3. `{login}/{slug}`, where `{slug}` comes from the `.dev-plan.md` H1 → section 1's title →
-   the current branch name. **Never** from a `/dev` convention name (`dev_main`,
-   `dev_main_2`, ...) — identical on every run and for both developers, so it collides by
-   construction; skip to the next source. Slugify: lowercase, non-alphanumeric → `-`,
-   collapse, trim, ≤40 chars; empty or degenerate result (a non-ASCII title) →
-   `work-{git rev-parse --short HEAD}`.
+3. `{login}/{slug}`. When the run is **live** (pre-flight 9), `{slug}` comes from the plan's
+   H1 → section 1's title → the current branch name. When it is stale, the branch name is the
+   only source — do not open `.dev-plan.md` at all.
+
+   **Never** slug a `/dev` convention name (`dev_main`, `dev_main_2`, ...) — identical on every
+   run and for both developers, so it collides by construction; skip to the next source.
+   Slugify: lowercase, non-alphanumeric → `-`, collapse, trim, ≤40 chars; empty or degenerate
+   result (a non-ASCII title) → `work-{git rev-parse --short HEAD}`.
 4. Nothing usable → **STOP, ask** for `--branch`.
 
-**Draft** if `--draft`, or if any `.dev-state.md` section is not `complete`, or if Step 1 was
-red and the author chose to proceed. The last one is not optional — red checks must not
-produce a mergeable PR.
-**Title:** `--title` → `.dev-plan.md` H1 → the single commit's subject → humanized `{slug}`.
+**Draft** if `--draft`, or if the run is **live** and any section is not `complete`, or if
+Step 1 was red and the author chose to proceed. The last one is not optional — red checks must
+not produce a mergeable PR. A stale state file never forces a draft; its incomplete sections
+belong to work that is already finished.
+**Title:** `--title` → the plan's H1 **if the run is live** → the single commit's subject →
+humanized `{slug}`.
 **Reviewer:** `--reviewer` → otherwise the collaborators with push who are not `{login}`
 (`gh api repos/{owner}/{repo}/collaborators`), proposed as the default in Step 5. If that
 call fails, just ask.
@@ -169,7 +184,8 @@ call fails, just ask.
 
 ```markdown
 ## What changed
-<one bullet per completed section from .dev-log.md; no log → one per commit subject>
+<one bullet per completed section from .dev-log.md when the run is live (pre-flight 9);
+ otherwise one bullet per commit subject in origin/{base}...HEAD>
 
 ## Verification
 - `checks.sh all`: <green | green, N stages SKIPped (not installed) | **RED (<stage>)** — <one line>>
@@ -236,7 +252,7 @@ new flags.
 
 ## Step 8 — Cleanup (only with approval)
 
-Only when `.dev-state.md` exists: list the section branches (`git branch --list
+Only when the run is **live** (pre-flight 9): list the section branches (`git branch --list
 '{integration_branch}--section-*'`) and ask once to delete them. They are local-only and the
 integration branch's `--no-ff` merges keep their history — safe, but still a deletion, so
 still asked.
@@ -271,6 +287,8 @@ STATUS: STOPPED — {one-line reason}.
   forces a draft and is recorded in the PR body, because `checks.sh all` can go red on the
   author's environment rather than on the branch.
 - Review against `origin/{base}`, never a local trunk branch.
-- `.dev-state.md` is optional; never require every section to be complete.
+- `.dev-state.md` is optional; never require every section to be complete. And it counts only
+  when **live** (pre-flight 9) — present is not the same as relevant, since it and
+  `.dev-plan.md` are gitignored and survive the run that wrote them.
 - Verify gh identity against `repos/{owner}/{repo}` before trusting `gh api user`.
 - `--yes` requires its exact token and is never inferred from prose.
