@@ -14,7 +14,9 @@ Order sub-tasks so that interface-defining work (APIs, schemas, data models) com
 
 If the task requires more than 5 sub-tasks: without `--auto`, tell me to split it into multiple `/work` runs; with `--auto`, return `STATUS: NEEDS_SPLIT` with `BLOCKER: <why it does not fit in 5>` immediately — do not ask the user.
 
-If `$ARGUMENTS` contains `--auto`:
+If `$ARGUMENTS` contains `--auto` **as a standalone whole word** (not inside a longer token,
+and not merely quoted or mentioned inside the task description — a task that *talks about*
+`--auto` is not a request to enable it):
   - Skip the approval prompt. Proceed directly with the proposed sub-task list.
   - Skip branch creation. The caller has already prepared and checked out
     the working branch. Stay on it.
@@ -148,6 +150,11 @@ After all sub-tasks are done:
   gate (Step 2), branch creation (Step 2), and the final full-pytest run
   (Step 4.1). All other gates remain in force — in particular, NEVER merge
   or push without explicit user approval, regardless of --auto.
+- `--auto` suppresses a safety gate, so it is recognised ONLY as a standalone
+  whole word, never inferred from prose and never matched inside a longer
+  token or inside the task description. A task that merely mentions `--auto`
+  must not enable it. (Flags that do NOT suppress a gate are the opposite —
+  those may be recognised from plain language.)
 - Under --auto, a single test-fix attempt is allowed (Step 3.c). On second
   failure, /work returns `STATUS: NEEDS_DECISION` rather than asking the user.
   A plan needing more than 5 sub-tasks returns `STATUS: NEEDS_SPLIT`.

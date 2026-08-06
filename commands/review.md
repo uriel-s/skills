@@ -8,15 +8,36 @@ not a prompt to re-run with looser criteria.
 
 Process:
 
-1. **Identify changes** — determine the trunk branch first: `git symbolic-ref --short refs/remotes/origin/HEAD` (strip the `origin/` prefix); if unset, use local `main`, then `master`; if none exists, ask the user which branch to diff against. Then run `git diff <trunk>...HEAD --name-only` and `git diff <trunk>...HEAD --stat`. An empty diff against an existing trunk means "nothing to review" — report that and stop; do NOT silently fall back to a different branch.
+1. **Identify changes** — determine the diff base first, in this order:
 
-2. **Discover project rules** — search the repo for guideline files:
+   1. **`--base <ref>` in `$ARGUMENTS`** → use `<ref>` verbatim and skip the rest of this
+      list. It may be any git ref, including a remote-tracking one (`origin/main`) — that
+      is the point of the flag: a caller pushing to a remote must review against what the
+      remote actually has, not against a possibly-stale local trunk. Verify it resolves
+      with `git rev-parse --verify <ref>`; if it does not → **STOP**, report the bad ref.
+      Do NOT silently fall back to autodetect — a caller that named a base meant it.
+   2. `.claude/project-params.md` names a `Trunk branch` → verify that branch exists
+      locally and use it.
+   3. `git symbolic-ref --short refs/remotes/origin/HEAD` (strip the `origin/` prefix).
+   4. Local `main`, then `master`.
+   5. None of the above → ask the user which branch to diff against.
+
+   Then run `git diff <base>...HEAD --name-only` and `git diff <base>...HEAD --stat`. An
+   empty diff against an existing base means "nothing to review" — report that and stop; do
+   NOT silently fall back to a different branch.
+
+2. **Discover project rules** — if `.claude/project-params.md` exists (written by
+   /setup-project), read it first and use it as a discovery shortcut: re-verify its paths
+   cheaply instead of searching from scratch, and if the project has drifted, trust what you
+   find over the list. Otherwise, search the repo for guideline files:
    - `CLAUDE.md`, `CONTRIBUTING.md`, `.editorconfig`, linter configs
    - Architecture docs (`ARCHITECTURE.md`, `docs/architecture*`, `docs/design*`)
    - Any `docs/code-review-template.md` or similar review guidelines
    - Test conventions (look at existing tests for patterns)
 
    Use whatever you find to calibrate the review. If a project has its own review template, follow it.
+   Pass the relevant parameters (framework-specific checks, test conventions, doc paths) into
+   the agent prompts in Step 3 — subagents do not read this file themselves.
 
 3. **Launch 3 agents in parallel** to review all changed files (a 4th agent runs sequentially in Step 6):
 
@@ -137,8 +158,14 @@ Process:
 
 7. **Fix** — if user approves, fix findings grouped by severity (Critical → Major → Minor). One commit for all review fixes. Then re-verify fixes are correct.
 
+Arguments:
+- `--base <ref>` — diff against `<ref>` instead of autodetecting the trunk (Step 1).
+  Accepts remote-tracking refs (`origin/main`). Used by `/pr`, which must review against
+  the remote trunk it is about to open a PR into.
+
 Rules:
 - Always run full review (3 agents, all categories) regardless of scope
 - Maximum 2 review-fix cycles
 - Do NOT auto-merge — present results and let the user decide
+- Do NOT push. A caller that needs a push (`/pr`) does it itself, after this review returns
 - Adapt categories to the project's tech stack — don't check for things irrelevant to the project

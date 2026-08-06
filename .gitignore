@@ -19,6 +19,10 @@ id_rsa.*
 *.token
 .npmrc
 
+# Machine-local Claude Code settings — contain absolute paths and
+# per-machine permission grants; never belong in the shared repo.
+.claude/settings.local.json
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
