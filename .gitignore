@@ -23,6 +23,12 @@ id_rsa.*
 # per-machine permission grants; never belong in the shared repo.
 .claude/settings.local.json
 
+# Local working notes — session runbooks and scratch planning. Kept out of the
+# repo deliberately: this repo has readers beyond its author, and working notes
+# are written for one reader and rarely read well by the others.
+/ROLLOUT.md
+/NOTES.md
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db
