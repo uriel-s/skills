@@ -59,10 +59,31 @@ because a task description merely *mentioned* `--auto`.
 
 ## Step 1 — Checks
 
-`bash .claude/checks.sh all`. Red → **STOP**: report which stage failed.
+`bash .claude/checks.sh all`. Runs before the push, not after it: `/dev-finish` can verify
+after its merge because a local merge is revertible, and a push is not.
 
-Runs before the push, not after it: `/dev-finish` can verify after its merge because a local
-merge is revertible, and a push is not.
+**Red → report which stage failed, then ask.** Do not stop dead:
+
+```
+checks.sh all: RED (sec)
+  pip-audit: pillow 10.2.0 — GHSA-xxxx
+
+Abort, or open as a draft anyway?
+```
+
+A hard stop here is wrong, because `checks.sh all` is not purely a property of the branch:
+`run_sec` calls `pip-audit` with no arguments, which audits **the whole active Python
+environment**. A stale package the author installed for some other project turns every `/pr`
+red, for a defect they cannot fix from inside this repo. An unfixable stop does not produce
+careful work — it produces `git push` plus the web "New pull request" button, which skips the
+scan, the review and the PR body all at once.
+
+If the author proceeds, the PR is **forced to draft** (it cannot be merged by accident) and
+the body records `checks: RED (<stage>)`. The gate moves from blocking to visible: the
+reviewer sees the state on the PR instead of trusting that checks passed.
+
+Script missing → run `python -m pytest` and `python -m ruff check .` directly, and say so in
+the report and the PR body.
 
 Script missing → run `python -m pytest` and `python -m ruff check .` directly, and say so in
 the report and the PR body.
@@ -114,7 +135,6 @@ else removed, and a file count in Step 5 that does not describe the diff being a
    Stopping after `git rm --cached` is worse than doing nothing — it leaves the tree dirty
    (which pre-flight 4 forbids) and, being uncommitted, does not remove anything from the PR
    diff. Either do all three or leave it and just report. Never leave it half-applied.
-3. **Oversized files.** Any added file > 5 MB → **warn**. Repository size is permanent.
 
 ## Step 4 — Resolve the PR shape
 
@@ -136,7 +156,9 @@ else removed, and a file count in Step 5 that does not describe the diff being a
    `work-{git rev-parse --short HEAD}`.
 4. Nothing usable → **STOP, ask** for `--branch`.
 
-**Draft** if `--draft`, or if any `.dev-state.md` section is not `complete`.
+**Draft** if `--draft`, or if any `.dev-state.md` section is not `complete`, or if Step 1 was
+red and the author chose to proceed. The last one is not optional — red checks must not
+produce a mergeable PR.
 **Title:** `--title` → `.dev-plan.md` H1 → the single commit's subject → humanized `{slug}`.
 **Reviewer:** `--reviewer` → otherwise the collaborators with push who are not `{login}`
 (`gh api repos/{owner}/{repo}/collaborators`), proposed as the default in Step 5. If that
@@ -150,7 +172,7 @@ call fails, just ask.
 <one bullet per completed section from .dev-log.md; no log → one per commit subject>
 
 ## Verification
-- `checks.sh all`: <green | green, N stages SKIPped (not installed)>
+- `checks.sh all`: <green | green, N stages SKIPped (not installed) | **RED (<stage>)** — <one line>>
 - `/review` vs `origin/{base}`: <C> Critical, <M> Major, <m> Minor<, N fixed> | skipped by author
 - <if behind: "N commits behind origin/{base} — the merge result is untested.">
 
@@ -244,8 +266,10 @@ STATUS: STOPPED — {one-line reason}.
   that merges to a trunk, and only a local one.
 - Never run on the trunk (pre-flight 6). Never delete the integration branch. Never archive
   the run's state or log.
-- `checks.sh all` and the pre-push scan both run before the push — nothing red or secret-
-  bearing reaches the remote.
+- `checks.sh all` and the pre-push scan both run before the push. A secret is a hard stop —
+  it cannot be withdrawn once pushed. Red checks are not: they are surfaced, and proceeding
+  forces a draft and is recorded in the PR body, because `checks.sh all` can go red on the
+  author's environment rather than on the branch.
 - Review against `origin/{base}`, never a local trunk branch.
 - `.dev-state.md` is optional; never require every section to be complete.
 - Verify gh identity against `repos/{owner}/{repo}` before trusting `gh api user`.
