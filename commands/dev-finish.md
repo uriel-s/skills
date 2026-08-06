@@ -3,6 +3,10 @@ Finish a completed /dev run: final review, approved trunk merge, cleanup. $ARGUM
 This is the missing end of the /dev lifecycle. /dev merges sections into the integration
 branch and stops; this command takes the integration branch the rest of the way.
 
+Use it when **you** approve the merge. If someone else does, use `/pr` instead — it pushes
+the branch and opens a pull request rather than merging. `/pr` also works without
+`.dev-state.md` (after a plain `/work`), which this command requires.
+
 ## Pre-flight
 
 1. `.dev-state.md` exists and every section has `status: complete`? If not → **STOP**: report
@@ -56,6 +60,7 @@ STATUS: STOPPED — {one-line reason}.
 
 ## Rules
 
-- Never push to remote without explicit user approval.
+- Never push to remote without explicit user approval. (`/pr` is the system's one sanctioned
+  push path; this command is not it — it merges locally and pushes nothing.)
 - Never merge or delete branches without explicit approval in this session.
 - Read state from `.dev-state.md`; do not guess branch names.

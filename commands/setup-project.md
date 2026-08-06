@@ -1,11 +1,14 @@
 Set up a Python project for the Claude command system: `.claude/checks.sh` + `.claude/project-params.md`. $ARGUMENTS
 
-Run this once per project, before the first /dev run. It produces two files:
+Run this once per project, before the first /dev run. It writes two files and appends to a
+third:
 
 - **`.claude/checks.sh`** — the toolchain contract (`test | lint | security | all`) that /dev,
-  /work and /dev-finish invoke.
+  /work, /dev-finish and /pr invoke.
 - **`.claude/project-params.md`** — a discovery cache that /review and /ui-test read as a
   shortcut instead of searching the repo from scratch.
+- **`.gitignore`** — append-only, for the run artifacts /work and /dev leave behind (Step 4).
+  The only user-owned file this command touches, so it is never rewritten.
 
 Both are data, not code: the command files themselves stay global in `~/.claude/commands/` and
 are never copied into the project, so updating a master command applies everywhere at once.
@@ -112,7 +115,7 @@ script but WARN prominently in the report — `lint` and `format` will fail unti
 Note for existing projects: this template's `all` is STRICTER than the pre-2026-07-31 one —
 it adds `ruff format --check`, and it no longer stops at the first failure. A project that was
 green before can legitimately go red on formatting the first time. Report that as the
-project's state; do not fix it here (Step 4 rules apply).
+project's state; do not fix it here (Step 5 rules apply).
 
 ## Step 3: Generate `.claude/project-params.md`
 
@@ -150,23 +153,52 @@ scratch; if the project has drifted, trust what you find over this list.
 - UI tests: <dir>, runner `<exact command>`
 ```
 
-## Step 4: Verify
+## Step 4: Ignore run artifacts
+
+`/work` and `/dev` leave scratch files in the project root. Nothing ignores them by default,
+so a `git add -A` sweeps them into a commit — `work.md` carries a standing rule telling the
+agent to avoid exactly that, which is a behavioural guard where a structural one belongs.
+It mattered little while everything stayed local; `/pr` pushes what is tracked.
+
+**`.gitignore` is user-owned and not regenerable** — unlike the two files above. So:
+append only, never rewrite or reorder existing lines, and skip any pattern already present
+(by exact match anywhere in the file). Re-running this command must add nothing the second
+time. Create the file if it is absent.
+
+```gitignore
+# Claude command-system run artifacts (added by /setup-project)
+.dev-state.md
+.dev-log.md
+.dev-plan.md
+.dev-plan.*.done.md
+.dev-archive/
+.work-context.md
+.claude/settings.local.json
+```
+
+If every pattern is already present, report "up to date" and write nothing. Report which
+lines were added. `.dev-plan.md` is the one debatable entry — it is user-authored input
+rather than generated state, so say so in the report and let the user drop it if they want
+plans versioned.
+
+## Step 5: Verify
 
 Run `bash .claude/checks.sh all` and report the result honestly. Failing tests are the
 project's current state, not yours to fix here — report them; do not modify project code.
 
-## Step 5: CLAUDE.md check
+## Step 6: CLAUDE.md check
 
 If the project root has no CLAUDE.md, or it is empty: warn that /work's quality depends on a
 real CLAUDE.md (development workflow, conventions) and suggest running /init. Do not create or
 edit CLAUDE.md yourself.
 
-## Step 6: Report
+## Step 7: Report
 
 ```
 Created/updated:
 - .claude/checks.sh         (or "up to date" / "skipped by user")
 - .claude/project-params.md
+- .gitignore                (+N lines, or "up to date")
 
 Detected: src=<SRC> tests=<TESTS>
 Stack: <language + framework>   UI: <framework or "none">
@@ -180,7 +212,9 @@ Ready for: /work, /dev, /review<, /ui-test if a UI layer was detected>
 
 ## Rules
 
-- Do NOT modify any files besides `.claude/checks.sh` and `.claude/project-params.md`.
-- Do NOT fix failing tests or lint during Step 4 — report only.
+- Do NOT modify any files besides `.claude/checks.sh`, `.claude/project-params.md`, and
+  `.gitignore` — and `.gitignore` is append-only: never rewrite, reorder, or remove a line
+  that was already there.
+- Do NOT fix failing tests or lint during Step 5 — report only.
 - No discovery questions — auto-detect everything. The only permitted prompt is the overwrite
   confirmation in Step 2.
