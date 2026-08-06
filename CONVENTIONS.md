@@ -14,17 +14,29 @@ copy in the same change.
 - **No per-project command copies.** Commands are never copied into a project's
   `.claude/commands/`. A master edit therefore takes effect in every project immediately, with
   no per-project reinstall step and nothing that can drift.
-- **Per-project data:** `/setup-project` writes exactly two files — `.claude/checks.sh` (the
-  toolchain contract) and `.claude/project-params.md` (a discovery cache read by `review.md`
-  Step 1 (trunk) and Step 2 (rules), and `ui-test.md` Step 0). Both are regenerable; neither is
-  hand-maintained.
-- **One exception, added 2026-08-06:** `/setup-project` Step 4 also **appends** run-artifact
-  patterns to `.gitignore`. That file is user-owned and NOT regenerable, which is why the
-  rules there are append-only, idempotent, and never rewrite an existing line — the opposite
-  of how the two files above are treated. It earns the exception because `work.md`'s standing
-  "never commit `.work-context.md`, stage explicitly, no `git add -A`" rule is a behavioural
-  guard doing a structural job, and `/pr` turned the failure from local clutter into pushed
-  content.
+- **Per-project data:** `/setup-project` **generates** exactly two files — `.claude/checks.sh`
+  (the toolchain contract) and `.claude/project-params.md` (a discovery cache read by
+  `review.md` Step 1 (trunk) and Step 2 (rules), and `ui-test.md` Step 0). Both are
+  regenerable; neither is hand-maintained. It touches three more, listed below, under
+  different rules.
+- **Three git-level files, added 2026-08-06** (`/setup-project` Step 4): `.gitignore` gets
+  run-artifact patterns, `.gitattributes` gets `*.sh text eol=lf`, and `.githooks/pre-push`
+  refuses pushes straight to the trunk. All three are user-owned and NOT regenerable, so they
+  are handled the opposite way from the two generated files: append-only or
+  ask-before-replacing, idempotent, never silently overwritten. They earn their place because
+  the alternatives are behavioural guards doing structural jobs — `work.md` carries a standing
+  "never commit `.work-context.md`, stage explicitly, no `git add -A`" rule, and `/pr`'s trunk
+  refusal only covers the `/pr` path. `/pr` is what raised the stakes: it turned these from
+  local clutter into pushed content.
+- The push guard is versioned once and opted out of **per machine**
+  (`git config claude.allowTrunkPush true`), because the maintainer legitimately pushes the
+  trunk after a local `/dev-finish` merge while everyone else should not. Same file, different
+  behaviour per clone — the alternative, per-developer hook variants, would drift immediately.
+- **The hook file alone does not install the guard.** `core.hooksPath` is per-clone config and
+  is not committed, so a fresh clone gets a dormant file — on exactly the machine the guard
+  exists for. Every clone must run `git config core.hooksPath .githooks` once; `/setup-project`
+  does it locally and reports the line for everyone else. Any future guard shipped as a git
+  hook inherits this problem.
 - Every field written into `project-params.md` must have a named reader above. A field nobody
   reads is the exact defect that got `/setup-review` deleted — when adding one, cite its
   consumer here or leave it out.
@@ -197,7 +209,9 @@ takes `--base <ref>` (any ref, including remote-tracking) rather than `--base <b
 
 ## Branch naming (/dev)
 
-Copies: `dev.md` throughout; consumed by `dev-finish.md` cleanup and `pr.md` Step 7.
+Copies: `dev.md` throughout; consumed by `dev-finish.md` cleanup, and by `pr.md` Step 4 (which
+must NOT derive a remote branch name from these) and Step 8 (which deletes the section
+branches).
 
 - Integration branch: `dev_main` (numbered fallbacks `dev_main_2`, `dev_main_3`, ...).
 - Section branches: `{integration_branch}--section-{N}-{slug}` (slug ≤40 chars, lowercased,
@@ -207,7 +221,7 @@ Copies: `dev.md` throughout; consumed by `dev-finish.md` cleanup and `pr.md` Ste
 
 ## Remote branch naming (/pr)
 
-Copies: `pr.md` Step 3. Local names above are per-machine; these are shared.
+Copies: `pr.md` Step 4. Local names above are per-machine; these are shared.
 
 - `{gh-login}/{slug}`, pushed via `git push -u origin HEAD:refs/heads/{name}` so the local
   branch keeps its own name.

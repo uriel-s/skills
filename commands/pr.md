@@ -76,7 +76,11 @@ Present the findings table, then:
 - **Critical/Major** → **ask**: fix first (e.g. `/work` on this branch), open the PR anyway,
   or abort. Opening anyway is legitimate — a PR requests review, it does not claim
   perfection — but it must be a decision, not a default.
-- After any fix → **re-run Step 1**.
+- After any fix → **re-run Step 1**, then continue. **One fix cycle, then move on** — the same
+  budget `/dev` gives a section. Do not re-review after fixing and fix again; if the branch
+  still has Critical/Major findings after one cycle, that is what the PR and its reviewer are
+  for. An unbounded loop here lands on the least experienced user, on the branch with the most
+  findings.
 - **Minor-only or clean** → continue.
 
 The counts go into the PR body either way. When skipped, the body says
@@ -85,7 +89,16 @@ The counts go into the PR body either way. When skipped, the body says
 ## Step 3 — Pre-push scan
 
 The last point at which anything can be kept off a server. Scan `git diff
-origin/{base}..HEAD` — the added lines only:
+origin/{base}...HEAD` — the added lines only.
+
+**Three dots, not two.** Two-dot diffs the two trees, so anything the trunk *deleted* while
+this branch was away shows up as a line this branch "added" — pre-flight 8 exists precisely
+because the branch is often behind, which is exactly when the two forms diverge. Three-dot
+diffs from the merge base, i.e. only what this branch actually contributes, which is also
+what GitHub shows on the PR. Getting this wrong means stopping the author over a key someone
+else removed, and a file count in Step 5 that does not describe the diff being approved.
+`review.md` already uses the three-dot form; the `git log origin/{base}..HEAD` in pre-flight
+7 is correctly two-dot (it lists commits, not content).
 
 1. **Secrets.** `checks.sh sec` does not cover this (bandit reads code patterns, pip-audit
    reads dependencies). Grep for at least: `-----BEGIN [A-Z ]*PRIVATE KEY`, `AKIA[0-9A-Z]{16}`,
@@ -94,17 +107,26 @@ origin/{base}..HEAD` — the added lines only:
    secret stays reachable through the API and caches after the branch is deleted, so it must
    be rotated, not withdrawn.
 2. **Run artifacts.** `.dev-state.md`, `.dev-log.md`, `.dev-plan.md`, `.work-context.md`,
-   `.dev-archive/` appearing in the diff → **warn** and offer to `git rm --cached` them and
-   add them to `.gitignore`. They are scratch state; locally they are harmless, but tracked
-   they land in every PR.
+   `.dev-archive/` appearing in the diff → **warn**. They are scratch state; locally they are
+   harmless, but tracked they land in every PR.
+   The fix, if the author takes it, is a complete three-step one: `git rm --cached <paths>`,
+   append them to `.gitignore`, then **commit that** (`chore: stop tracking run artifacts`).
+   Stopping after `git rm --cached` is worse than doing nothing — it leaves the tree dirty
+   (which pre-flight 4 forbids) and, being uncommitted, does not remove anything from the PR
+   diff. Either do all three or leave it and just report. Never leave it half-applied.
 3. **Oversized files.** Any added file > 5 MB → **warn**. Repository size is permanent.
 
 ## Step 4 — Resolve the PR shape
 
 **Remote branch**, first match wins:
 1. An upstream already set and pointing at `origin` (`git rev-parse --abbrev-ref @{upstream}`)
-   → **reuse verbatim.** This is what makes a repeat run update its own PR instead of opening
-   a rival one; it outranks everything below.
+   → **reuse verbatim**, *unless* the remote name it points at is a `/dev` convention name
+   (`dev_main`, `dev_main_2`, ...). This is what makes a repeat run update its own PR instead
+   of opening a rival one, so it outranks everything below — but a single earlier
+   `git push -u origin dev_main`, which a newcomer may well have run before learning `/pr`,
+   would otherwise pin the remote branch to the one name rule 3 forbids, and both developers'
+   branches collide there. In that case **warn**, ignore the upstream, and fall through to
+   rule 3.
 2. `--branch <name>` → verbatim.
 3. `{login}/{slug}`, where `{slug}` comes from the `.dev-plan.md` H1 → section 1's title →
    the current branch name. **Never** from a `/dev` convention name (`dev_main`,
@@ -142,20 +164,26 @@ is itself the useful signal.
 
 ## Step 5 — Confirm (one gate)
 
-Unless `--yes`, print exactly what will happen and wait for one approval:
+Unless `--yes`, print exactly what will happen and ask **one** question:
 
 ```
-Push  {current_branch} → origin/{remote_branch}  ({N} commits, {M} files)
-PR    {owner}/{repo}  {base} ← {remote_branch}   [draft]
-      "{title}"
-Review: {C} Critical, {M} Major, {m} Minor    checks.sh all: green
-Reviewer: {default}      ← Enter to accept, another login, or "none"
+Push     {current_branch} → origin/{remote_branch}  ({N} commits, {M} files)
+PR       {owner}/{repo}  {base} ← {remote_branch}   [draft]
+         "{title}"
+Reviewer {default}
+Review   {C} Critical, {M} Major, {m} Minor    checks.sh all: green
 {warning line, if behind}
-Proceed? [y/N]
+
+Proceed? (y = go / n = abort / or name a different reviewer)
 ```
 
-One gate, not one per step — but a real one. This is the first action in the system that
-leaves the machine and notifies other people, and no local revert undoes it.
+`{M} files` is the three-dot count from Step 3 — the same diff GitHub will show, not the
+two-dot one.
+
+One gate, not one per step — and one question inside it. This is the first action in the
+system that leaves the machine and notifies other people, and no local revert undoes it, so
+the author must read one block and answer once. A reviewer name typed instead of y/n replaces
+the default and re-asks; anything else aborts.
 
 ## Step 6 — Push
 

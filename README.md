@@ -75,12 +75,31 @@ on the pull request plus branch protection on the trunk — not a slash command.
 
 ## Per-project setup
 
-Run `/setup-project` once in a new project. It writes two files, and nothing else:
+Run `/setup-project` once in a new project. It touches five files, and nothing else:
 
 | File | Who reads it |
 |---|---|
 | `.claude/checks.sh` | `/work`, `/dev`, `/dev-finish`, `/pr` — how to test and lint this project |
 | `.claude/project-params.md` | `/review`, `/ui-test` — a discovery cache: trunk branch, doc paths, test layout, UI framework |
+| `.gitignore` | git — appended with the scratch files `/work` and `/dev` leave behind |
+| `.gitattributes` | git — appended with `*.sh text eol=lf`, so a committed `checks.sh` isn't checked out as CRLF and killed by `$'\r'` |
+| `.githooks/pre-push` | git — refuses pushes straight to the trunk |
+
+The first two are generated and overwritten freely. The last three are yours: the two dotfiles
+are only ever appended to, and an existing `pre-push` hook is never replaced without asking.
+
+**The hook needs one line per clone.** `core.hooksPath` is local config and is not committed,
+so cloning the repo gets you the hook file and no hook. Everyone runs this once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The push guard is one file for the whole team, opted out of per machine — the maintainer who
+merges locally and pushes the trunk runs `git config claude.allowTrunkPush true` once; nobody
+else does. `git push --no-verify` bypasses it, so it stops accidents, not intent. That is all
+a client-side hook can do, and on a private repo on GitHub's free plan — where branch
+protection cannot be enabled at all — it is most of what is available.
 
 The commands themselves are never copied into your project — they stay global in
 `~/.claude/commands/`, so editing one here applies everywhere at once. `project-params.md` is

@@ -1,14 +1,18 @@
 Set up a Python project for the Claude command system: `.claude/checks.sh` + `.claude/project-params.md`. $ARGUMENTS
 
-Run this once per project, before the first /dev run. It writes two files and appends to a
-third:
+Run this once per project, before the first /dev run:
 
 - **`.claude/checks.sh`** — the toolchain contract (`test | lint | security | all`) that /dev,
   /work, /dev-finish and /pr invoke.
 - **`.claude/project-params.md`** — a discovery cache that /review and /ui-test read as a
   shortcut instead of searching the repo from scratch.
-- **`.gitignore`** — append-only, for the run artifacts /work and /dev leave behind (Step 4).
-  The only user-owned file this command touches, so it is never rewritten.
+- **`.gitignore`** — appended, never rewritten, for the run artifacts /work and /dev leave
+  behind (Step 4a).
+- **`.gitattributes`** — appended, so a committed `.sh` survives `core.autocrlf` (Step 4b).
+- **`.githooks/pre-push`** — refuses pushes straight to the trunk (Step 4c).
+
+The first two are generated data, overwritten freely. The last two are git-level and
+user-owned: append-only, and never silently replaced.
 
 Both are data, not code: the command files themselves stay global in `~/.claude/commands/` and
 are never copied into the project, so updating a master command applies everywhere at once.
@@ -153,7 +157,12 @@ scratch; if the project has drifted, trust what you find over this list.
 - UI tests: <dir>, runner `<exact command>`
 ```
 
-## Step 4: Ignore run artifacts
+## Step 4: Git hygiene
+
+Two guards written once per project. Both are structural — they hold whether or not an agent
+remembers a rule.
+
+### 4a — Ignore run artifacts
 
 `/work` and `/dev` leave scratch files in the project root. Nothing ignores them by default,
 so a `git add -A` sweeps them into a commit — `work.md` carries a standing rule telling the
@@ -181,6 +190,81 @@ lines were added. `.dev-plan.md` is the one debatable entry — it is user-autho
 rather than generated state, so say so in the report and let the user drop it if they want
 plans versioned.
 
+### 4b — Keep shell scripts LF
+
+`core.autocrlf=true` is Git for Windows' default (system-level on this machine). A `.sh` file
+committed without a `.gitattributes` rule is checked out as CRLF, and bash then dies on
+`$'\r'` — or worse, `SRC="src"` becomes `src\r` and the failure reads as a broken repo layout
+rather than a line-ending problem.
+
+The locally generated `checks.sh` is unaffected, since it never round-trips through a
+checkout. This only bites once a project commits it — and then it bites every fresh clone,
+breaking `/work`, `/dev`, `/dev-finish` and `/pr` at once. Two lines prevent it, so append
+them (same append-only rules as 4a):
+
+```gitattributes
+# Shell scripts must stay LF or bash dies on \r (added by /setup-project)
+*.sh text eol=lf
+```
+
+Skip if an equivalent rule is already present. Create `.gitattributes` if absent.
+
+### 4c — Trunk push guard
+
+`/pr` refuses to run on the trunk, but that only guards the `/pr` path — a plain `git push`
+walks around it. This hook covers every push from this clone, which matters most on projects
+whose trunk has no server-side protection (private repos on GitHub's free plan cannot enable
+branch protection at all).
+
+The guard must not block the maintainer, who legitimately pushes the trunk after merging
+locally. So the hook is **versioned once and opted out of per machine** — same file for
+everyone, different behaviour depending on a local git config flag.
+
+Write `.githooks/pre-push`:
+
+```bash
+#!/usr/bin/env bash
+# installed by /setup-project — refuses pushes to the trunk unless this clone opts in.
+# Maintainers who merge locally and push the trunk: git config claude.allowTrunkPush true
+if [ "$(git config --bool claude.allowTrunkPush 2>/dev/null || echo false)" = "true" ]; then
+  exit 0
+fi
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "${remote_ref#refs/heads/}" in
+    main|master|trunk)
+      echo "pre-push: refusing to push directly to ${remote_ref#refs/heads/}." >&2
+      echo "  Open a pull request instead (/pr)." >&2
+      echo "  Maintainer? git config claude.allowTrunkPush true" >&2
+      exit 1
+      ;;
+  esac
+done
+exit 0
+```
+
+Then, in this clone: `git config core.hooksPath .githooks`, and mark the file executable so
+Git for Windows will run it: `git update-index --add --chmod=+x .githooks/pre-push`.
+
+**`core.hooksPath` is per-clone config and is NOT committed.** Only the hook *file* is
+versioned, so a fresh clone gets a dormant file and no guard — which is the one developer the
+guard exists for. Committing the hook is therefore not enough on its own. Report this
+explicitly, with the line every other clone must run once:
+
+```
+git config core.hooksPath .githooks
+```
+
+If the project has a CLAUDE.md, say in the report that this line belongs in its setup
+instructions. Do not edit CLAUDE.md here (Step 6 owns that boundary).
+
+Rules for this step:
+- If `.githooks/pre-push` already exists → show it and ask before overwriting. Never
+  overwrite a hook silently; it may be the user's own.
+- If `core.hooksPath` is already set to something other than `.githooks` → **do not change
+  it**. Report the conflict and leave the project's existing hook setup alone.
+- Say plainly in the report that `git push --no-verify` bypasses this. It stops accidents,
+  not determined pushes — that is the whole of what a client-side hook can do.
+
 ## Step 5: Verify
 
 Run `bash .claude/checks.sh all` and report the result honestly. Failing tests are the
@@ -199,6 +283,9 @@ Created/updated:
 - .claude/checks.sh         (or "up to date" / "skipped by user")
 - .claude/project-params.md
 - .gitignore                (+N lines, or "up to date")
+- .gitattributes            (+N lines, or "up to date")
+- .githooks/pre-push        (or "kept existing" / "skipped — core.hooksPath already set")
+  ACTION REQUIRED in every other clone: git config core.hooksPath .githooks
 
 Detected: src=<SRC> tests=<TESTS>
 Stack: <language + framework>   UI: <framework or "none">
@@ -212,9 +299,12 @@ Ready for: /work, /dev, /review<, /ui-test if a UI layer was detected>
 
 ## Rules
 
-- Do NOT modify any files besides `.claude/checks.sh`, `.claude/project-params.md`, and
-  `.gitignore` — and `.gitignore` is append-only: never rewrite, reorder, or remove a line
-  that was already there.
+- Do NOT modify any files besides `.claude/checks.sh`, `.claude/project-params.md`,
+  `.gitignore`, `.gitattributes`, and `.githooks/pre-push`. `.gitignore` and `.gitattributes`
+  are append-only — never rewrite, reorder, or remove a line that was already there. An
+  existing `pre-push` hook, or a `core.hooksPath` already pointing elsewhere, is left alone
+  and reported.
 - Do NOT fix failing tests or lint during Step 5 — report only.
-- No discovery questions — auto-detect everything. The only permitted prompt is the overwrite
-  confirmation in Step 2.
+- No discovery questions — auto-detect everything. Exactly two prompts are permitted: the
+  `checks.sh` overwrite confirmation in Step 2 and the `pre-push` overwrite confirmation in
+  Step 4c. Everything else is detected or reported, never asked.
