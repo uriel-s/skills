@@ -205,9 +205,17 @@ them (same append-only rules as 4a):
 ```gitattributes
 # Shell scripts must stay LF or bash dies on \r (added by /setup-project)
 *.sh text eol=lf
+.githooks/* text eol=lf
 ```
 
-Skip if an equivalent rule is already present. Create `.gitattributes` if absent.
+**Both lines, not just the first.** Git hooks are extensionless — `.githooks/pre-push` is not
+matched by `*.sh`, so without the second line the guard from 4c arrives CRLF on a fresh clone
+and dies as `/usr/bin/env: 'bash\r': No such file or directory`. It would break for exactly
+the developer it exists to protect, and the error names neither the hook nor the line endings.
+(Found the hard way, 2026-08-06: the two rules were written in the same sitting and did not
+cover each other.)
+
+Skip whichever rule is already present. Create `.gitattributes` if absent.
 
 ### 4c — Trunk push guard
 
@@ -220,35 +228,84 @@ The guard must not block the maintainer, who legitimately pushes the trunk after
 locally. So the hook is **versioned once and opted out of per machine** — same file for
 everyone, different behaviour depending on a local git config flag.
 
-Write `.githooks/pre-push`:
+Write `.githooks/pre-push`. One file serves both installation routes below, so the project
+never needs two copies of the rule:
 
 ```bash
 #!/usr/bin/env bash
 # installed by /setup-project — refuses pushes to the trunk unless this clone opts in.
 # Maintainers who merge locally and push the trunk: git config claude.allowTrunkPush true
+#
+# Runs both as a plain git pre-push hook (refs arrive on stdin) and as a pre-commit
+# pre-push-stage hook (target branch arrives in PRE_COMMIT_REMOTE_BRANCH, and stdin
+# is NOT the ref list). Handling both is why this works in projects that already use
+# pre-commit as well as those that do not.
+set -u
+
 if [ "$(git config --bool claude.allowTrunkPush 2>/dev/null || echo false)" = "true" ]; then
   exit 0
 fi
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
-  case "${remote_ref#refs/heads/}" in
-    main|master|trunk)
-      echo "pre-push: refusing to push directly to ${remote_ref#refs/heads/}." >&2
-      echo "  Open a pull request instead (/pr)." >&2
-      echo "  Maintainer? git config claude.allowTrunkPush true" >&2
-      exit 1
-      ;;
-  esac
+
+is_trunk() { case "${1#refs/heads/}" in main|master|trunk) return 0 ;; *) return 1 ;; esac; }
+
+refuse() {
+  echo "pre-push: refusing to push directly to ${1#refs/heads/}." >&2
+  echo "  Open a pull request instead (/pr)." >&2
+  echo "  Maintainer? git config claude.allowTrunkPush true" >&2
+  exit 1
+}
+
+if [ -n "${PRE_COMMIT_REMOTE_BRANCH:-}" ]; then          # invoked by pre-commit
+  is_trunk "$PRE_COMMIT_REMOTE_BRANCH" && refuse "$PRE_COMMIT_REMOTE_BRANCH"
+  exit 0
+fi
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do   # invoked by git
+  is_trunk "$remote_ref" && refuse "$remote_ref"
 done
 exit 0
 ```
 
-Then, in this clone: `git config core.hooksPath .githooks`, and mark the file executable so
-Git for Windows will run it: `git update-index --add --chmod=+x .githooks/pre-push`.
+Mark it executable so Git for Windows will run it:
+`git update-index --add --chmod=+x .githooks/pre-push`.
 
-**`core.hooksPath` is per-clone config and is NOT committed.** Only the hook *file* is
-versioned, so a fresh clone gets a dormant file and no guard — which is the one developer the
-guard exists for. Committing the hook is therefore not enough on its own. Report this
-explicitly, with the line every other clone must run once:
+**Then choose the installation route by what the project already has. Detect first, always.**
+
+#### If the project already uses a hook framework
+
+`.pre-commit-config.yaml` exists, or `.git/hooks/pre-commit` exists → **do NOT touch
+`core.hooksPath`.** It *replaces* the hooks directory rather than adding to it, so setting it
+silently stops every hook the project already runs — and `pre-commit install` then refuses
+while it is set, blocking the obvious repair. Trading a suite of working gates for one new one
+is never the right call.
+
+Register through the framework instead. Append to `.pre-commit-config.yaml`:
+
+```yaml
+  - repo: local
+    hooks:
+      - id: no-trunk-push
+        name: refuse direct pushes to the trunk
+        entry: .githooks/pre-push
+        language: script
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+```
+
+then `pre-commit install --hook-type pre-push`. pre-commit stays the single owner of
+`.git/hooks/`, and both guards run.
+
+Same append-only care as 4a: if an `id: no-trunk-push` entry is already there, change nothing.
+
+#### If the project has no hook framework
+
+No `.pre-commit-config.yaml` and no hooks in `.git/hooks/` → `git config core.hooksPath
+.githooks` in this clone.
+
+**That config is per-clone and is NOT committed.** Only the hook *file* is versioned, so a
+fresh clone gets a dormant file and no guard — on precisely the machine the guard exists for.
+Committing the hook is not enough on its own. Report the line every other clone must run once:
 
 ```
 git config core.hooksPath .githooks
@@ -258,17 +315,36 @@ If the project has a CLAUDE.md, say in the report that this line belongs in its 
 instructions. Do not edit CLAUDE.md here (Step 6 owns that boundary).
 
 Rules for this step:
-- If `.githooks/pre-push` already exists → show it and ask before overwriting. Never
-  overwrite a hook silently; it may be the user's own.
+- If `.githooks/pre-push` already exists → show it and ask before overwriting. Never overwrite
+  a hook silently; it may be the user's own.
 - If `core.hooksPath` is already set to something other than `.githooks` → **do not change
   it**. Report the conflict and leave the project's existing hook setup alone.
-- Say plainly in the report that `git push --no-verify` bypasses this. It stops accidents,
-  not determined pushes — that is the whole of what a client-side hook can do.
+- Never set `core.hooksPath` on a project that has hooks in the default directory. That was a
+  live defect (2026-08-06): it would have silently killed 11 pre-commit hooks.
+- Say plainly in the report that `git push --no-verify` bypasses this. It stops accidents, not
+  determined pushes — that is the whole of what a client-side hook can do.
 
 ## Step 5: Verify
 
-Run `bash .claude/checks.sh all` and report the result honestly. Failing tests are the
-project's current state, not yours to fix here — report them; do not modify project code.
+**First, check which `bash` this is.** On Windows, `bash` may resolve to WSL rather than Git
+Bash, and a WSL environment usually has no Python — so `bash .claude/checks.sh all` fails with
+`python: command not found`, which reads as a broken project rather than a shell problem.
+Measured on one machine, same file and commit: WSL exit 127, Git Bash exit 0.
+
+```bash
+command -v bash          # …/WindowsApps/bash.exe → WSL;  /usr/bin/bash under Git Bash
+bash -c 'command -v python || echo NO-PYTHON'
+```
+
+`NO-PYTHON` → **stop and report it**, with the working invocation
+(`"C:\Program Files\Git\bin\bash.exe" .claude/checks.sh all`). Do not conclude the project's
+toolchain is broken, and do not try to fix Python — it is the wrong interpreter, not a missing
+dependency. Say it plainly in the Step 7 report and suggest the project's CLAUDE.md name which
+bash it means.
+
+Then run `bash .claude/checks.sh all` (or the Git Bash path, if the check above required it)
+and report the result honestly. Failing tests are the project's current state, not yours to fix
+here — report them; do not modify project code.
 
 ## Step 6: CLAUDE.md check
 
@@ -284,8 +360,10 @@ Created/updated:
 - .claude/project-params.md
 - .gitignore                (+N lines, or "up to date")
 - .gitattributes            (+N lines, or "up to date")
-- .githooks/pre-push        (or "kept existing" / "skipped — core.hooksPath already set")
+- .githooks/pre-push        (or "kept existing")
+  installed via: <pre-commit pre-push stage | core.hooksPath> — and if core.hooksPath,
   ACTION REQUIRED in every other clone: git config core.hooksPath .githooks
+- bash: <Git Bash | WSL — checks.sh needs the Git Bash path, see Step 5>
 
 Detected: src=<SRC> tests=<TESTS>
 Stack: <language + framework>   UI: <framework or "none">
