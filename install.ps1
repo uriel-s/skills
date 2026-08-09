@@ -35,7 +35,9 @@ $ErrorActionPreference = 'Stop'
 function Say  { param($m) Write-Host "  $m" }
 function Ok   { param($m) Write-Host "  [ ok ] $m" -ForegroundColor Green }
 function Warn { param($m) Write-Host "  [warn] $m" -ForegroundColor Yellow }
-function Die  { param($m) Write-Host "  [FAIL] $m" -ForegroundColor Red; throw $m }
+# Exit rather than throw: a PowerShell stack trace buries the one line that matters under a
+# wall of red, and this script is aimed at someone who should not have to read one.
+function Die  { param($m) Write-Host ""; Write-Host "  [FAIL] $m" -ForegroundColor Red; Write-Host ""; exit 1 }
 function Step { param($m) Write-Host ""; Write-Host "== $m" -ForegroundColor Cyan }
 
 $Stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
@@ -122,10 +124,22 @@ if ($existing -and $existing.LinkType -eq 'Junction') {
     }
 }
 elseif ($existing) {
-    # A real directory with real files. Back it up before it is destroyed.
+    # A real directory with real files - typically an older hand-copied install.
+    # Back it up before it is destroyed.
     $backup = Join-Path $BackupDir "commands-backup-$Stamp"
     $n = (Get-ChildItem $Deployed -File -Recurse).Count
     Say "found a real directory with $n file(s) - this is the copy the junction replaces"
+
+    # Anything here that is not in the repo disappears from the live set. It survives in the
+    # backup, but nobody thinks to look there. Name the files now, while it is still cheap.
+    $repoNames = @(Get-ChildItem $CommandsDir -Filter *.md -File | ForEach-Object { $_.Name })
+    $goneNames = @(Get-ChildItem $Deployed -Filter *.md -File | Where-Object { $repoNames -notcontains $_.Name } | ForEach-Object { $_.Name })
+    if ($goneNames.Count -gt 0) {
+        Warn "$($goneNames.Count) command(s) here are NOT in the repo and will stop being available:"
+        foreach ($g in $goneNames) { Warn "    $g" }
+        Warn "They are kept in the backup below. If any is one you still want, it belongs in the"
+        Warn "repo - copy it out of the backup, commit it, and everyone gets it."
+    }
     if ($PSCmdlet.ShouldProcess($Deployed, "Back up to $backup, then replace with a junction")) {
         Copy-Item $Deployed $backup -Recurse
         if ((Get-ChildItem $backup -File -Recurse).Count -ne $n) {
