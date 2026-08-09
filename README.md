@@ -140,6 +140,36 @@ Explicitly **not**:
   the clone — see [Per-project setup](#per-project-setup).
 - **Not** `git config claude.allowTrunkPush true`. That one is the maintainer's.
 
+## Adding your own, without disturbing these
+
+`~/.claude/commands` is no longer a folder — it is a checkout. Anything written there lands
+inside the deployment clone. An untracked file does not break `git pull` on its own, but the
+day someone commits a command with the same name, the pull fails with *"untracked working tree
+files would be overwritten by merge"* — and since the hook fails soft, the failure is invisible
+and your commands quietly freeze.
+
+So there is exactly one forbidden location, and everywhere else is free:
+
+| What you are building | Where it goes | Touches this repo? |
+|---|---|---|
+| A personal skill, available in every project | `~/.claude/skills/<name>/SKILL.md` | no |
+| A command for one project only | `<project>/.claude/commands/<name>.md` | no |
+| A skill for one project only | `<project>/.claude/skills/<name>/` | no |
+| Something both of you should have | this repo, then commit and push | yes — that is the point |
+| — | `~/.claude/commands/` **never** | it *is* the clone |
+
+Measured 2026-08-09: `~/.claude/skills/` is a plain directory, is not linked to anything here,
+and a skill placed in it loads in the next session while the deployment clone stays clean and
+`git pull --ff-only` keeps returning 0. Of the sixteen directories under `~/.claude`, exactly
+one — `commands` — is a junction.
+
+Note the formats differ, which is also why `commands/` has not been renamed to `skills/`: a
+command is a flat `.md` file, a skill is a directory holding `SKILL.md` with `name` and
+`description` frontmatter.
+
+The only name rule: do not reuse one of the names below for a private skill. Anything else is
+yours, and two people picking the same private name never collide — those files never meet.
+
 ## The commands
 
 | Command | What it does |
