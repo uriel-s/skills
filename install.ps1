@@ -64,6 +64,20 @@ if ($CommandCount -eq 0) { Die "commands/ is empty - nothing to deploy." }
 Ok "clone:    $Clone"
 Ok "commands: $CommandCount files"
 
+# The clone path is baked into settings.json below. Moving or renaming this folder later
+# breaks the hook - and it breaks it SILENTLY, which is the whole problem with this design.
+# Warn now about the locations people habitually tidy up.
+$unstable = @('\Desktop\', '\Downloads\', '\Temp\', '\tmp\', '\OneDrive\')
+foreach ($u in $unstable) {
+    if ("$Clone\" -like "*$u*") {
+        Warn "this clone is under a folder people tend to move or sync ($($u.Trim('\')))."
+        Warn "Its path gets written into settings.json. If you move or rename it later, updates"
+        Warn "stop with no error shown. Prefer somewhere permanent, e.g. $env:USERPROFILE\skills"
+        Warn "Continuing anyway - re-run this script from the new location if you ever move it."
+        break
+    }
+}
+
 # Discover git rather than hard-coding a path - it differs per machine, and a hook that
 # cannot find git fails silently forever.
 $GitCmd = Get-Command git -ErrorAction SilentlyContinue
@@ -267,7 +281,13 @@ else {
     Say "~/.claude/commands  ->  $CommandsDir"
     Say "Updates pull automatically at the start of every new Claude Code session."
     Say ""
-    Say "Open a new Claude Code session and type / to see the commands."
+    Say "Next: open a NEW Claude Code session and type / - you should see $CommandCount commands."
+    Say ""
+    Write-Host "  DO NOT MOVE OR RENAME THIS FOLDER:" -ForegroundColor Yellow
+    Write-Host "    $Clone" -ForegroundColor Yellow
+    Write-Host "  Its path is stored in settings.json. If it moves, updates stop and nothing" -ForegroundColor Yellow
+    Write-Host "  says so - the commands keep working, frozen at today's version. If you do" -ForegroundColor Yellow
+    Write-Host "  move it, just run install.ps1 again from the new location." -ForegroundColor Yellow
     Say ""
     Say "Edit the commands in a SEPARATE working clone, never in this one. This clone is the"
     Say "live deployment and pushing from it is blocked."

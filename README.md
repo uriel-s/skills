@@ -6,16 +6,22 @@ clone, done — from then on `git pull` *is* the deploy.
 
 ## Install
 
+One line, pasted into PowerShell — not as administrator:
+
 ```powershell
-git clone https://github.com/uriel-s/skills.git
-cd skills
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+cd $env:USERPROFILE; git clone https://github.com/uriel-s/skills.git; powershell -ExecutionPolicy Bypass -File .\skills\install.ps1
 ```
 
-That is the whole install. No administrator rights, and nothing to fill in — the script
-deploys the clone it is sitting in, so there is no path to type wrong.
+That is the whole install. Nothing to fill in: the script deploys the clone it is sitting in,
+so there is no path to type wrong. `-ExecutionPolicy Bypass` applies to that one run only and
+changes no setting.
 
 Then open a new Claude Code session and type `/` to confirm the commands are there.
+
+It clones into your home folder on purpose. **The clone's path is written into
+`settings.json`, so moving or renaming the folder later stops updates — silently.** The script
+warns if you install from somewhere people habitually tidy up (Desktop, Downloads, OneDrive,
+temp). If you do move it, re-run `install.ps1` from the new location.
 
 [install.ps1](install.ps1) is safe to re-run and reports everything it does. Add `-WhatIf` to
 see the plan without changing anything. It backs up `~/.claude/commands` and `settings.json`
@@ -104,13 +110,13 @@ soft, so a stray commit made there would stop updates *silently* rather than lou
 
 Everything they need, and nothing else:
 
-```powershell
-git clone https://github.com/uriel-s/skills.git
-cd skills
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
+1. The one-line install from [Install](#install) above.
+2. Open a new Claude Code session, type `/`, confirm the commands are listed.
+3. `pre-commit install` in each work project.
 
-Then `pre-commit install` in each work project. That is all.
+That is all. They already have git and GitHub credentials if they have ever pushed a branch;
+`install.ps1` stops with a clear message if either is missing, or if Claude Code has not been
+run at least once (it needs `~/.claude` to exist).
 
 One clone is enough for them — they never edit the commands, so the two-clone split above has
 no purpose here, and `install.ps1` blocks pushing from the clone it deploys.
