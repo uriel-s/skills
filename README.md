@@ -6,28 +6,41 @@ clone, done — from then on `git pull` *is* the deploy.
 
 ## Install
 
-`~/.claude/commands` becomes a **directory junction** aimed at this repo's `commands/`. There
-is no copy and no deploy step, and because the deployment is a real checkout, `/pr` can read
-which version of a command actually ran (its Provenance line).
-
 ```powershell
 git clone https://github.com/uriel-s/skills.git
-Remove-Item "$env:USERPROFILE\.claude\commands" -Recurse -Force
-New-Item -ItemType Junction -Path "$env:USERPROFILE\.claude\commands" `
-         -Target "<absolute path to the clone>\commands"
+cd skills
+powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-**Back up `~/.claude/commands` first.** That `Remove-Item` deletes whatever is there, and on an
-existing install that is your only deployed copy.
+That is the whole install. No administrator rights, and nothing to fill in — the script
+deploys the clone it is sitting in, so there is no path to type wrong.
 
-Junction, not symlink: a symlink needs administrator rights on Windows, a junction does not.
+Then open a new Claude Code session and type `/` to confirm the commands are there.
 
-Type `/` in Claude Code to confirm the commands show up.
+[install.ps1](install.ps1) is safe to re-run and reports everything it does. Add `-WhatIf` to
+see the plan without changing anything. It backs up `~/.claude/commands` and `settings.json`
+into `~/.claude/backups/` before touching either, refuses to proceed if the backup comes out
+short, and validates the merged `settings.json` *before* it replaces the real one — a settings
+file that fails to parse silently disables every setting in it.
 
-### Keeping it current automatically
+### What it actually does
 
-The junction removes the copy but not the pull. A `SessionStart` hook in
-`~/.claude/settings.json` makes every new session pull first:
+**Points `~/.claude/commands` at the clone's `commands/` with a directory junction.** No copy
+and no deploy step, and because the deployment is a real checkout, `/pr` can report which
+version of a command ran (its Provenance line) instead of `unknown`. Junction, not symlink: a
+symlink needs administrator rights on Windows, a junction does not.
+
+**Adds a `SessionStart` hook to `~/.claude/settings.json`** so every new session pulls first.
+Existing settings and any existing hooks are merged, never replaced.
+
+**Blocks pushing from that clone.** The deployment is not a workspace: an accidental
+commit-and-push from it would change the commands for everyone who pulls. Pulls are unaffected.
+Undo with `git remote set-url --push origin <url>`.
+
+**Runs the hook command once and reports the result** — because when this hook fails, it fails
+invisibly (see below), so the install is the one moment a silent failure is cheap to catch.
+
+### The hook, if you ever need to write it by hand
 
 ```json
 "hooks": {
@@ -54,10 +67,22 @@ Three details carry the weight:
   shell involved. On a machine where `bash` resolves to WSL2 — which cannot see `C:\` paths —
   a shell-form hook fails silently and the commands quietly stop updating.
 - **Absolute path to `git.exe`.** A hook does not necessarily inherit your `PATH`, and a hook
-  that cannot find `git` fails the same silent way.
+  that cannot find `git` fails the same silent way. `install.ps1` discovers it per machine.
 - **`async: true`.** The hook runs in the background, so no network failure, conflict, or
   detached head can delay session start. It fails soft by construction rather than by
-  remembering to add `|| true`.
+  remembering to append `|| true`.
+
+**Fail-soft cuts both ways, and this is the part to remember.** Measured 2026-08-09: with the
+deployment clone on a detached HEAD, the hook exited 1 and the session opened with *no visible
+sign at all*. That is the required behaviour — a hook must never hang a session — but it means
+a real breakage is equally invisible. The commands keep working and simply freeze at the last
+version pulled. To check:
+
+```powershell
+git -C "<the deployment clone>" status --short --branch
+```
+
+Anything other than `## master...origin/master` with no files listed means updates have stopped.
 
 ### Maintainer: two clones
 
@@ -77,13 +102,18 @@ soft, so a stray commit made there would stop updates *silently* rather than lou
 
 ## Onboarding a second developer
 
-Everything they need, in order — and nothing else.
+Everything they need, and nothing else:
 
-1. `git clone https://github.com/uriel-s/skills.git`. One clone is enough; they never edit the
-   commands, so the two-clone split above has no purpose for them.
-2. Junction `~/.claude/commands` at the clone's `commands/` — see [Install](#install).
-3. Add the `SessionStart` hook above, with their own clone path.
-4. In each work project: `pre-commit install`.
+```powershell
+git clone https://github.com/uriel-s/skills.git
+cd skills
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Then `pre-commit install` in each work project. That is all.
+
+One clone is enough for them — they never edit the commands, so the two-clone split above has
+no purpose here, and `install.ps1` blocks pushing from the clone it deploys.
 
 Explicitly **not**:
 
