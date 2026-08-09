@@ -9,8 +9,13 @@ clone, done — from then on `git pull` *is* the deploy.
 One line, pasted into PowerShell — not as administrator:
 
 ```powershell
-cd $env:USERPROFILE; git clone https://github.com/uriel-s/skills.git; powershell -ExecutionPolicy Bypass -File .\skills\install.ps1
+cd $env:USERPROFILE; git clone https://github.com/uriel-s/skills.git; if (Test-Path .\skills\install.ps1) { powershell -ExecutionPolicy Bypass -File .\skills\install.ps1 } else { Write-Host '  [FAIL] The clone did not succeed - see the error above. Nothing was installed.' -ForegroundColor Red }
 ```
+
+The `if` is not decoration. PowerShell's `;` means *continue regardless*, so without it a failed
+clone — no network, no credentials, `skills` already there — still runs the second half, and
+`powershell -File` on a missing path drops into an **interactive shell**: a banner and a prompt,
+with nothing saying the clone failed. Measured, not theorised.
 
 That is the whole install. Nothing to fill in: the script deploys the clone it is sitting in,
 so there is no path to type wrong. `-ExecutionPolicy Bypass` applies to that one run only and
