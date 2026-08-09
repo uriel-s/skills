@@ -1,26 +1,95 @@
 # Claude Code — commands & skills
 
 Personal slash commands for [Claude Code](https://claude.com/claude-code), plus the
-project toolchain template they depend on. Portable: clone anywhere, copy into place, done.
+project toolchain template they depend on. Clone anywhere, point `~/.claude/commands` at the
+clone, done — from then on `git pull` *is* the deploy.
 
 ## Install
 
-Copy the commands into your global Claude Code directory — they then work in every project
-on that machine:
-
-```bash
-git clone https://github.com/uriel-s/skills.git
-cp skills/commands/*.md ~/.claude/commands/
-```
-
-On Windows (PowerShell):
+`~/.claude/commands` becomes a **directory junction** aimed at this repo's `commands/`. There
+is no copy and no deploy step, and because the deployment is a real checkout, `/pr` can read
+which version of a command actually ran (its Provenance line).
 
 ```powershell
 git clone https://github.com/uriel-s/skills.git
-Copy-Item skills\commands\*.md "$env:USERPROFILE\.claude\commands\" -Force
+Remove-Item "$env:USERPROFILE\.claude\commands" -Recurse -Force
+New-Item -ItemType Junction -Path "$env:USERPROFILE\.claude\commands" `
+         -Target "<absolute path to the clone>\commands"
 ```
 
-Type `/` in Claude Code to confirm they show up.
+**Back up `~/.claude/commands` first.** That `Remove-Item` deletes whatever is there, and on an
+existing install that is your only deployed copy.
+
+Junction, not symlink: a symlink needs administrator rights on Windows, a junction does not.
+
+Type `/` in Claude Code to confirm the commands show up.
+
+### Keeping it current automatically
+
+The junction removes the copy but not the pull. A `SessionStart` hook in
+`~/.claude/settings.json` makes every new session pull first:
+
+```json
+"hooks": {
+  "SessionStart": [
+    {
+      "hooks": [
+        {
+          "type": "command",
+          "command": "C:/Program Files/Git/cmd/git.exe",
+          "args": ["-C", "<absolute path to the clone>", "pull", "--ff-only", "--quiet"],
+          "timeout": 20,
+          "async": true,
+          "statusMessage": "Updating Claude commands"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Three details carry the weight:
+
+- **`args`, not a command string.** With `args` the executable is spawned directly, with no
+  shell involved. On a machine where `bash` resolves to WSL2 — which cannot see `C:\` paths —
+  a shell-form hook fails silently and the commands quietly stop updating.
+- **Absolute path to `git.exe`.** A hook does not necessarily inherit your `PATH`, and a hook
+  that cannot find `git` fails the same silent way.
+- **`async: true`.** The hook runs in the background, so no network failure, conflict, or
+  detached head can delay session start. It fails soft by construction rather than by
+  remembering to add `|| true`.
+
+### Maintainer: two clones
+
+Whoever *develops* the commands wants a second clone. A junction aimed straight at the working
+repo means any `git checkout` silently changes the live commands in every project — a
+half-finished command on a feature branch becomes the one `/pr` runs.
+
+```
+Source/commands              the working repo — edit here, switch branches freely
+Source/SKILLS-DO-NOT-EDIT    a second clone, only ever on master
+                                  ^
+              ~/.claude/commands  (the junction points here)
+```
+
+The live clone is named for its rule because nothing else enforces it. The auto-pull hook fails
+soft, so a stray commit made there would stop updates *silently* rather than loudly.
+
+## Onboarding a second developer
+
+Everything they need, in order — and nothing else.
+
+1. `git clone https://github.com/uriel-s/skills.git`. One clone is enough; they never edit the
+   commands, so the two-clone split above has no purpose for them.
+2. Junction `~/.claude/commands` at the clone's `commands/` — see [Install](#install).
+3. Add the `SessionStart` hook above, with their own clone path.
+4. In each work project: `pre-commit install`.
+
+Explicitly **not**:
+
+- **Not** `git config core.hooksPath .githooks`. It silently disables every pre-commit hook on
+  the clone — see [Per-project setup](#per-project-setup).
+- **Not** `git config claude.allowTrunkPush true`. That one is the maintainer's.
 
 ## The commands
 
@@ -83,23 +152,31 @@ Run `/setup-project` once in a new project. It touches five files, and nothing e
 | `.claude/project-params.md` | `/review`, `/ui-test` — a discovery cache: trunk branch, doc paths, test layout, UI framework |
 | `.gitignore` | git — appended with the scratch files `/work` and `/dev` leave behind |
 | `.gitattributes` | git — appended with `*.sh text eol=lf`, so a committed `checks.sh` isn't checked out as CRLF and killed by `$'\r'` |
-| `.githooks/pre-push` | git — refuses pushes straight to the trunk |
+| `.githooks/pre-push` | git — refuses pushes straight to the trunk, *if* activated (see below — usually it should not be) |
 
 The first two are generated and overwritten freely. The last three are yours: the two dotfiles
 are only ever appended to, and an existing `pre-push` hook is never replaced without asking.
 
-**The hook needs one line per clone.** `core.hooksPath` is local config and is not committed,
-so cloning the repo gets you the hook file and no hook. Everyone runs this once:
+**The push guard is dormant, and on most projects it must stay that way.** `.githooks/pre-push`
+is versioned, but the `git config core.hooksPath .githooks` that would activate it is local
+config — and **do not run it on a project that uses pre-commit**. `core.hooksPath` *replaces*
+the hooks directory rather than adding to it, so that one line silently kills every hook in
+`.git/hooks/`, and `pre-commit install` then refuses to run while it is set — the obvious
+repair is blocked too. Measured on a real project on 2026-08-06: 11 hooks would have gone
+(ruff, ruff-format, mypy, bandit, import-linter, architecture-map, file-size…).
 
-```bash
-git config core.hooksPath .githooks
-```
+Run `pre-commit install`, and nothing else. No trunk guard is the status quo here, not a
+regression: `/pr` already refuses to run on the trunk, so the only path left uncovered is a
+deliberate manual `git push origin main`. If the guard is ever wanted, the shape is known — a
+`pre-push`-stage entry in `.pre-commit-config.yaml`, leaving pre-commit the single owner of the
+hooks directory.
 
-The push guard is one file for the whole team, opted out of per machine — the maintainer who
-merges locally and pushes the trunk runs `git config claude.allowTrunkPush true` once; nobody
-else does. `git push --no-verify` bypasses it, so it stops accidents, not intent. That is all
-a client-side hook can do, and on a private repo on GitHub's free plan — where branch
-protection cannot be enabled at all — it is most of what is available.
+`git config claude.allowTrunkPush true` is the maintainer's opt-out of that guard, for the
+person who legitimately merges locally and pushes the trunk. While the guard is dormant it has
+no effect at all; nobody else runs it either way. And `git push --no-verify` bypasses any
+client-side hook, so this class of guard stops accidents, never intent — on a private repo on
+GitHub's free plan, where branch protection cannot be enabled at all, that is most of what is
+available.
 
 The commands themselves are never copied into your project — they stay global in
 `~/.claude/commands/`, so editing one here applies everywhere at once. `project-params.md` is
@@ -149,23 +226,27 @@ Not needed to *use* the commands — read these before *changing* one.
 
 ## Deploying a change
 
-The commands only take effect from `~/.claude/commands/`, so editing a file here changes
-nothing until you copy it over:
+There is no deploy step. Commit, push, and the change reaches every machine at that machine's
+next session start. **Deletions travel too** — the deployment *is* the checkout, so a command
+removed here is gone everywhere, with nothing extra to remember.
+
+That last part is the whole reason for the junction. Under the old copy-based deployment,
+`Copy-Item` only ever added and overwrote: a command deleted from `commands/` kept working in
+every project until you also ran `Remove-Item` on the deployed copy, so the repo could claim a
+command was gone while `/` still offered it. Drift ran the other way as well — edit
+`~/.claude/commands/` directly and this repo silently falls behind, which happened once for two
+weeks.
+
+**Edit in the working clone, never in the live one.** See
+[Maintainer: two clones](#maintainer-two-clones) for why that separation exists and what breaks
+without it.
+
+To see what is actually deployed and from where:
 
 ```powershell
-Copy-Item commands\*.md "$env:USERPROFILE\.claude\commands\" -Force
+Get-Item "$env:USERPROFILE\.claude\commands" | Select-Object LinkType, Target
+git -C "$env:USERPROFILE\.claude\commands" log -1 --oneline
 ```
 
-Easy to forget in the other direction too — edit `~/.claude/commands/` directly and this repo
-silently falls behind. That has already happened once, for two weeks. Commit, then deploy.
-
-**Deleting a command needs a second step.** `Copy-Item` only ever adds and overwrites — it
-never removes. A command you delete from `commands/` keeps working in every project until you
-also delete it from the deployment:
-
-```powershell
-Remove-Item "$env:USERPROFILE\.claude\commands\<name>.md"
-```
-
-Miss that step and the repo says a command is gone while `/` still offers it. To check what is
-actually deployed: `Get-ChildItem "$env:USERPROFILE\.claude\commands\"`.
+The second command working at all is the point: the deployment carries its own version, which
+is what lets `/pr` name the commit a review ran under instead of reporting `unknown`.
