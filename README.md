@@ -46,6 +46,14 @@ Undo with `git remote set-url --push origin <url>`.
 **Runs the hook command once and reports the result** — because when this hook fails, it fails
 invisibly (see below), so the install is the one moment a silent failure is cheap to catch.
 
+**Disarms an older hand-copied install, if it finds one.** Before this, the commands were
+handed around as a zip with an `INSTALL.bat` that `xcopy`'d them into `~/.claude/commands`.
+Running that again *after* the junction exists would copy files straight through it into the
+clone: the clone goes dirty, `--ff-only` starts failing, and updates stop with nothing shown.
+The script renames those installers to `.DISABLED-superseded-by-git` so they cannot be
+double-clicked by accident. Nothing is deleted — only renamed, and only files sitting next to
+a `commands/` folder of `.md` files.
+
 ### The hook, if you ever need to write it by hand
 
 ```json

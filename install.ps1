@@ -166,6 +166,55 @@ if (-not $WhatIfPreference) {
     Ok "$seen commands visible through the junction"
 }
 
+# ---------------------------------------------------------------- 1b. disarm the old installer
+
+Step "Checking for an older hand-copied install"
+
+# Before this repo was deployed by junction, the commands were handed around as a zip with an
+# INSTALL.bat that xcopy'd them into ~/.claude/commands. Running that again now would copy
+# files THROUGH the junction into the clone: the clone goes dirty, --ff-only starts failing,
+# and updates stop with nothing shown. Rename the installer so it cannot be double-clicked by
+# accident. Nothing is deleted - the files stay exactly where they are.
+$searchRoots = @(
+    (Join-Path $env:USERPROFILE 'Desktop'),
+    (Join-Path $env:USERPROFILE 'Downloads'),
+    $env:USERPROFILE
+) | Where-Object { Test-Path $_ } | Select-Object -Unique
+
+$found = @()
+foreach ($root in $searchRoots) {
+    foreach ($name in @('INSTALL.bat', 'INSTALL.sh')) {
+        $hits = Get-ChildItem -Path $root -Filter $name -File -Recurse -Depth 2 -ErrorAction SilentlyContinue
+        foreach ($h in $hits) {
+            # Only ones sitting next to a commands/ folder of .md files - that is this specific
+            # installer, not some unrelated program's.
+            $sib = Join-Path $h.DirectoryName 'commands'
+            if ((Test-Path $sib) -and (Get-ChildItem $sib -Filter *.md -File -ErrorAction SilentlyContinue)) {
+                $found += $h.FullName
+            }
+        }
+    }
+}
+# The roots overlap (Desktop is under USERPROFILE), so the same file turns up more than once.
+$found = @($found | Sort-Object -Unique)
+
+if ($found.Count -eq 0) {
+    Ok "none found"
+}
+else {
+    foreach ($path in $found) {
+        Say "found: $path"
+        $disabled = "$path.DISABLED-superseded-by-git"
+        if (Test-Path $disabled) { Ok "already disabled"; continue }
+        if ($PSCmdlet.ShouldProcess($path, "Rename so it cannot be run again")) {
+            Rename-Item $path -NewName (Split-Path $disabled -Leaf)
+            Ok "renamed to $(Split-Path $disabled -Leaf)"
+        }
+    }
+    Say "Nothing was deleted - only renamed, so it cannot be run by accident. That folder is"
+    Say "superseded now; remove it whenever you like."
+}
+
 # ---------------------------------------------------------------- 2. pull-only guard
 
 Step "Making this clone pull-only"
