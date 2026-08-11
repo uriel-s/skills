@@ -185,7 +185,7 @@ Minor-only or clean → proceed.
 ## Trunk detection (canonical algorithm)
 
 Copies: `dev.md` pre-flight, `review.md` Step 1, `setup-project.md` Step 1, `pr.md`
-pre-flight 5.
+pre-flight 5, `ready.md` pre-flight 2.
 
 1. Explicit override (`--base`) if given → verify it exists.
 2. `Trunk branch` from `.claude/project-params.md` if present → verify the branch exists locally.
@@ -194,12 +194,15 @@ pre-flight 5.
 5. Otherwise: ask the user (or, for non-interactive discovery, use the current branch + note).
 
 Steps 1 and 2 are conditional on the call site, and a site omitting one is correct, not
-drifted: `/dev`, `/review` and `/pr` accept `--base`, and only `review.md` reads the cache
-(`setup-project.md` WRITES that field, so it cannot read it). Every site implements steps 3–5.
+drifted: `/dev`, `/review`, `/pr` and `/ready` accept `--base`, and only `review.md` reads the
+cache (`setup-project.md` WRITES that field, so it cannot read it). Every site implements
+steps 3–5.
 
-`/pr` additionally inserts its own step between 1 and 2: `gh api repos/{owner}/{repo} --jq
-.default_branch`. That is not drift — for a command whose whole output is a PR, GitHub's
-own default branch is authoritative over any local inference about which branch is trunk.
+`/pr` and `/ready` additionally insert their own step between 1 and 2: `gh api
+repos/{owner}/{repo} --jq .default_branch`. That is not drift — both ask GitHub what is
+merged, so GitHub's own default branch is authoritative over any local inference about which
+branch is trunk. `/ready` takes it only in full mode (its pre-flight 4); with no working `gh`
+it falls straight through to step 3.
 
 **Local vs remote base.** Steps 2–4 all resolve to a *local* branch, which is correct for
 every command that merges locally. `/pr` merges on GitHub, so once the base name is
@@ -209,9 +212,10 @@ takes `--base <ref>` (any ref, including remote-tracking) rather than `--base <b
 
 ## Branch naming (/dev)
 
-Copies: `dev.md` throughout; consumed by `dev-finish.md` cleanup, and by `pr.md` Step 4 (which
+Copies: `dev.md` throughout; consumed by `dev-finish.md` cleanup, by `pr.md` Step 4 (which
 must NOT derive a remote branch name from these) and Step 8 (which deletes the section
-branches).
+branches), and by `ready.md` Step 3 rule 4 (which recognises section branches by this pattern
+but must still prove the merge with ancestry — the name is not evidence).
 
 - Integration branch: `dev_main` (numbered fallbacks `dev_main_2`, `dev_main_3`, ...).
 - Section branches: `{integration_branch}--section-{N}-{slug}` (slug ≤40 chars, lowercased,
@@ -221,7 +225,10 @@ branches).
 
 ## Remote branch naming (/pr)
 
-Copies: `pr.md` Step 4. Local names above are per-machine; these are shared.
+Copies: `pr.md` Step 4 (writes them); `ready.md` Step 3 (reads them back — it must query
+GitHub by the *remote* name and print the *local* one, and it uses the `{login}/` prefix in
+Step 6 to tell your remote branches from the other developer's). Local names above are
+per-machine; these are shared.
 
 - `{gh-login}/{slug}`, pushed via `git push -u origin HEAD:refs/heads/{name}` so the local
   branch keeps its own name.
@@ -238,11 +245,17 @@ Copies: `pr.md` Step 4. Local names above are per-machine; these are shared.
 ## Push & merge prohibition (canonical)
 
 Copies (wording may compress, meaning may not): `work.md` Step 3.d + Rules; `dev.md` Rules;
-`dev-finish.md` Rules; `review.md` Rules; `pr.md` Rules.
+`dev-finish.md` Rules; `review.md` Rules; `pr.md` Rules; `ready.md` Rules.
 
 **Default: never push, never merge, never delete a branch without explicit user approval in
 the current session.** Approval for one of those is not approval for another, and approval
 in one run does not carry to the next.
+
+`/ready` is the one command whose *purpose* is branch deletion, and it stays inside the
+default rather than claiming an exception: local branches only, only ones positively proven
+merged, all of them behind one gate in the session that runs it. It never deletes on a remote
+— it prints the `git push origin --delete` line and leaves it. That is the line between a
+revertible local pointer and an act everyone else on the repo sees.
 
 **The single sanctioned exception is `/pr`**, bounded to exactly this shape:
 

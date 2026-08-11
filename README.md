@@ -174,6 +174,7 @@ yours, and two people picking the same private name never collide — those file
 
 | Command | What it does |
 |---|---|
+| `/ready` | Am I clean to start? Surveys branches and leftovers, offers to clean up |
 | `/work` | Runs one task through the full development workflow — plan, implement, test, lint |
 | `/dev` | Runs whole sections from a plan autonomously; stops only for real decisions |
 | `/dev-plan` | Writes or lints the `.dev-plan.md` that `/dev` consumes |
@@ -186,7 +187,11 @@ yours, and two people picking the same private name never collide — those file
 | `/learn` | Pulls one engineering lesson out of what you just changed |
 | `/setup-project` | Sets a Python project up for all of the above — run once per project |
 
-`/red-team` and `/learn` are manual only — nothing calls them automatically.
+`/ready`, `/red-team` and `/learn` are manual only — nothing calls them automatically.
+
+`/ready` is the one to run first on a fresh clone, or after time away. It only reports until
+it has asked: it deletes local branches proven merged, and switches you to an updated trunk,
+each behind its own question. It never touches a branch on the server.
 
 ### Finishing a branch: `/dev-finish` or `/pr`
 
