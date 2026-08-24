@@ -365,7 +365,7 @@ SKIPPED reasons max one line each.
 - `PARTIAL` (any skipped) → **STOP**
 - `FAILED` → **STOP**
 
-**Fix budget: 1 cycle per section.** No re-review-after-fix loops. Bad fixes get caught by Phase F gates and post-merge tests in Phase G.
+**Fix budget: 1 cycle per section.** No re-review-after-fix loops. Bad fixes get caught by the Phase F gate, which runs the full suite on the section's final content. (Phase G's post-merge test is not a second net: it re-runs only when the merge changed the tree, which is the abnormal case.)
 
 ### Phase F — Verify gate (Main Agent)
 
@@ -375,13 +375,50 @@ Update state → `current_phase: verify`. One deterministic check. Must be green
 
 Green → Phase G.
 
+**Do not narrow this to save time, and do not add a lighter tier for it to call.**
+Both were proposed and measured on 2026-08-24 (12-core box): every
+check in `all` except pytest totals **11 seconds** — ruff 1+1, architecture-map
+0, file-size 1, public-api 3, import-linter 1, bandit 3, mypy 1 warm — and
+`pip_audit .` is **~30 s**, not the multi-minute cost its reputation suggests.
+`all` is the test suite plus ~40 seconds. There is no meaningful time in the
+non-pytest checks to reclaim, so a conditional-`pip_audit` branch or a new
+`checks.sh gate` subcommand buys tens of seconds for real complexity.
+
+Where the time actually went was Phase G re-running the suite on an identical
+tree (step 4 there), and a project suite pinned to one core. Both are fixed at
+their source. If a run still feels slow, measure the project's pytest — not this
+gate.
+
 ### Phase G — Merge to integration branch (Main Agent)
 
 1. Update state → `current_phase: merge`. Checkout `{integration_branch}`.
 2. `git merge --no-ff {integration_branch}--section-{N}-{slug} -m "merge: section {N} — {title}"`
 3. Merge conflict → **STOP**.
-4. Run `bash .claude/checks.sh test` on integration branch post-merge. Red → **STOP**.
-5. Update state: section N → complete, `current_section: N+1`, `current_phase: preflight`.
+4. Post-merge test — **only when the merge actually changed something.** Compare
+   the merged tree to the section branch's:
+   ```
+   git rev-parse "{integration_branch}--section-{N}-{slug}^{tree}"
+   git rev-parse "HEAD^{tree}"
+   ```
+   - **Identical** → skip the test. Phase F ran the full suite on this exact
+     content minutes ago; re-running it cannot discover anything. Log the skip
+     **with its reason** ("post-merge test skipped — merged tree identical to
+     section branch"), so a reader can tell a proven skip from a gate that
+     silently never ran.
+   - **Different** → the merge resolved a conflict, or the integration branch
+     moved. Run `bash .claude/checks.sh test`. Red → **STOP**.
+
+   This is the normal case, not an edge case: the section branch is cut from the
+   integration branch in Phase A and nothing else touches it during a run, so a
+   `--no-ff` merge of it produces the same tree. Measured on a 6-section run
+   (2026-08-24): identical in 4 of 4 sections checked, at 612 + 802 + 470 + 497
+   seconds — **40 minutes** re-testing bytes that had just been tested.
+
+   **Phase F is not the one to cut.** The same run tried skipping *verify* by
+   hand and recorded the result: section 3's `check_public_api_preserved.py`
+   failure was caught early and cheaply only because the per-section verify ran.
+   Phase F earns its cost; this duplicate does not.
+5. Update state: **rewrite section N's existing row in place** — set `status: complete` and add `merged_at` — then set `current_section: N+1`, `current_phase: preflight`. Never append a second row for a section that already has one. A 2026-08-24 run left section 5 listed twice, `complete` and `in_progress`, which a resume would read as unfinished work on an already-merged section.
 6. Append to log.
 7. **Keep the section branch.** Don't delete until /dev finishes successfully.
 
