@@ -51,9 +51,16 @@ If the file does not exist, this is the first sub-task.
 1. Read the relevant files listed above
 2. Implement the sub-task: {{subtask_description}}
 3. Write tests for your changes
-4. Run: bash .claude/checks.sh test {{relevant_test_files}} (only tests related
-   to your changes) — if `.claude/checks.sh` does not exist, run
-   `python -m pytest {{relevant_test_files}}` instead and say so in your report
+4. Run: bash .claude/checks.sh test {{relevant_test_files}} — {{relevant_test_files}}
+   MUST be the explicit test file path(s) or node id(s) you created or touched for
+   this sub-task (e.g. `tests/test_foo.py` or `tests/test_foo.py::test_bar`).
+   NEVER run `checks.sh test` with no path arguments and never pass a directory
+   (e.g. `tests/`) — either triggers a full parallel run of the entire suite,
+   which is what the one-time `checks.sh all` at the end of /work is for. If you
+   are unsure which test file covers your change, name the file you just wrote
+   or edited — do not fall back to a directory or a bare run to "be safe". If
+   `.claude/checks.sh` does not exist, run `python -m pytest {{relevant_test_files}}`
+   instead (same rule: explicit file/node ids only) and say so in your report
 5. Run: bash .claude/checks.sh lint — if `.claude/checks.sh` does not exist,
    run `python -m ruff check .` instead and say so in your report
 6. If tests or checks fail, fix and re-run until clean
@@ -140,6 +147,10 @@ After all sub-tasks are done:
 - Do NOT ask for commit approval — commit and continue automatically after each sub-task, but only once its tests pass (Step 3.c runs before the commit)
 - Do NOT merge or push without explicit user approval
 - Do NOT skip the test step
+- Per-sub-task test runs must name explicit file/node ids, never a bare
+  `checks.sh test` or a directory — that silently fans out into a full
+  parallel run of the whole suite per sub-task instead of the fast narrow
+  one. The full suite runs once, in Step 4.1.
 - Do NOT combine sub-tasks
 - Maximum 5 sub-tasks per session — split into multiple /work runs if needed
 - Each sub-task runs in its own fresh subagent for clean context
