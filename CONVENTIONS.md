@@ -9,11 +9,13 @@ copy in the same change.
 ## Deployment model
 
 - **Source of truth:** this repo (`commands/*.md`), versioned in git.
-- **Live deployment:** `~/.claude/commands/` (global — available in every project). Deploy by
-  copying `commands/*.md` there after committing.
+- **Live deployment:** `~/.claude/commands/` (global — available in every project) is a
+  directory junction pointing at the deployment clone's `commands/` directory, set up once by
+  `install.ps1` together with a `SessionStart` hook (`git pull --ff-only --quiet`). `git pull`
+  *is* the deploy, and deletions propagate automatically.
 - **No per-project command copies.** Commands are never copied into a project's
-  `.claude/commands/`. A master edit therefore takes effect in every project immediately, with
-  no per-project reinstall step and nothing that can drift.
+  `.claude/commands/`. A master edit therefore takes effect in every project on the next
+  session start, with no per-project reinstall step and nothing that can drift.
 - **Per-project data:** `/setup-project` **generates** exactly two files — `.claude/checks.sh`
   (the toolchain contract) and `.claude/project-params.md` (a discovery cache read by
   `review.md` Step 1 (trunk) and Step 2 (rules), and `ui-test.md` Step 0). Both are
@@ -33,10 +35,10 @@ copy in the same change.
   trunk after a local `/dev-finish` merge while everyone else should not. Same file, different
   behaviour per clone — the alternative, per-developer hook variants, would drift immediately.
 - **The hook file alone does not install the guard.** `core.hooksPath` is per-clone config and
-  is not committed, so a fresh clone gets a dormant file — on exactly the machine the guard
-  exists for. Every clone must run `git config core.hooksPath .githooks` once; `/setup-project`
-  does it locally and reports the line for everyone else. Any future guard shipped as a git
-  hook inherits this problem.
+  is not committed, so a fresh clone gets a dormant file — and on projects that use
+  `pre-commit` it **must stay dormant**, because setting `core.hooksPath` replaces
+  `.git/hooks/` and silently disables existing `pre-commit` hooks (see `README.md` under
+  *Per-project setup*).
 - Every field written into `project-params.md` must have a named reader above. A field nobody
   reads is the exact defect that got `/setup-review` deleted — when adding one, cite its
   consumer here or leave it out.

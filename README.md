@@ -1,8 +1,67 @@
-# Claude Code — commands & skills
+# Claude Code — Agentic Workflow & Quality Gates
 
-Personal slash commands for [Claude Code](https://claude.com/claude-code), plus the
-project toolchain template they depend on. Clone anywhere, point `~/.claude/commands` at the
-clone, done — from then on `git pull` *is* the deploy.
+Custom slash commands, multi-agent code review, and automated quality gates for
+[Claude Code](https://claude.com/claude-code), plus the per-project toolchain template they
+run against (`pytest`, `ruff`, `mypy`, `bandit`, `pip-audit`, `import-linter`).
+
+Clone anywhere, point `~/.claude/commands` at the clone with [`install.ps1`](install.ps1),
+done — from then on `git pull` *is* the deploy.
+
+## The commands
+
+| Command | What it does |
+|---|---|
+| `/ready` | Am I clean to start? Surveys branches and leftovers, offers to clean up |
+| `/work` | Runs one task through the full development workflow — plan, implement, test, lint |
+| `/dev` | Runs whole sections from a plan autonomously; stops only for real decisions |
+| `/dev-plan` | Writes or lints the `.dev-plan.md` that `/dev` consumes |
+| `/dev-finish` | Closes a `/dev` run: final review, trunk merge, cleanup |
+| `/pr` | Closes a branch the other way: checks, review, push, open a pull request |
+| `/review` | Full agent-based code review of the current branch |
+| `/quality-review` | Deep quality audit of a whole project — architecture, tests, docs, dead code |
+| `/ui-test` | UI/UX check of the running app |
+| `/red-team` | Tries to kill an idea *before* you build it — redundant? over-engineered? |
+| `/learn` | Pulls one engineering lesson out of what you just changed |
+| `/setup-project` | Sets a Python project up for all of the above — run once per project |
+
+`/ready`, `/red-team` and `/learn` are manual only — nothing calls them automatically.
+
+`/ready` is the one to run first on a fresh clone, or after time away. It only reports until
+it has asked: it deletes local branches proven merged, and switches you to an updated trunk,
+each behind its own question. It never touches a branch on the server.
+
+### Finishing a branch: `/dev-finish` or `/pr`
+
+Two ways out of a finished branch, and which one you use depends on whether you are the
+person who approves the merge:
+
+```
+              ┌── /dev-finish ── review ── merge to local trunk ── checks ── cleanup
+/work ──┐     │                                    (you approve your own merge)
+        ├─────┤
+/dev  ──┘     │
+              └── /pr ────────── checks ── review ── scan ── push ── open PR
+                                                  (someone else approves the merge)
+```
+
+`/dev-finish` verifies *after* its merge, because a local merge is revertible. `/pr`
+verifies *before* its push, because a push is not — and because a red branch costs a
+reviewer their time and a CI run.
+
+That is also why `/pr` has a scan step and `/dev-finish` does not. It greps the outgoing
+diff for secrets, run artifacts, and oversized files — `checks.sh sec` covers neither
+secrets nor file size, and a pushed key cannot be withdrawn, only rotated.
+
+`/pr` is the only command allowed to push, and only under a tight shape: the current
+branch, one remote branch named `<gh-login>/<slug>`, fast-forward only, after one
+confirmation. It never merges — a human does that on GitHub. Repeat runs update the same
+PR rather than opening a second one, which is the normal loop when a reviewer asks for
+changes. `/dev-finish` needs `.dev-state.md` and so only works after `/dev`; `/pr` treats
+it as optional and works after a plain `/work` too.
+
+**`/pr` is a quality gate, not a security gate.** It runs on the author's machine in the
+author's agent, so what it reports is a claim. If you need something unfakeable, that is CI
+on the pull request plus branch protection on the trunk — not a slash command.
 
 ## Install
 
@@ -167,64 +226,9 @@ Note the formats differ, which is also why `commands/` has not been renamed to `
 command is a flat `.md` file, a skill is a directory holding `SKILL.md` with `name` and
 `description` frontmatter.
 
-The only name rule: do not reuse one of the names below for a private skill. Anything else is
-yours, and two people picking the same private name never collide — those files never meet.
-
-## The commands
-
-| Command | What it does |
-|---|---|
-| `/ready` | Am I clean to start? Surveys branches and leftovers, offers to clean up |
-| `/work` | Runs one task through the full development workflow — plan, implement, test, lint |
-| `/dev` | Runs whole sections from a plan autonomously; stops only for real decisions |
-| `/dev-plan` | Writes or lints the `.dev-plan.md` that `/dev` consumes |
-| `/dev-finish` | Closes a `/dev` run: final review, trunk merge, cleanup |
-| `/pr` | Closes a branch the other way: checks, review, push, open a pull request |
-| `/review` | Full agent-based code review of the current branch |
-| `/quality-review` | Deep quality audit of a whole project — architecture, tests, docs, dead code |
-| `/ui-test` | UI/UX check of the running app |
-| `/red-team` | Tries to kill an idea *before* you build it — redundant? over-engineered? |
-| `/learn` | Pulls one engineering lesson out of what you just changed |
-| `/setup-project` | Sets a Python project up for all of the above — run once per project |
-
-`/ready`, `/red-team` and `/learn` are manual only — nothing calls them automatically.
-
-`/ready` is the one to run first on a fresh clone, or after time away. It only reports until
-it has asked: it deletes local branches proven merged, and switches you to an updated trunk,
-each behind its own question. It never touches a branch on the server.
-
-### Finishing a branch: `/dev-finish` or `/pr`
-
-Two ways out of a finished branch, and which one you use depends on whether you are the
-person who approves the merge:
-
-```
-              ┌── /dev-finish ── review ── merge to local trunk ── checks ── cleanup
-/work ──┐     │                                    (you approve your own merge)
-        ├─────┤
-/dev  ──┘     │
-              └── /pr ────────── checks ── review ── scan ── push ── open PR
-                                                  (someone else approves the merge)
-```
-
-`/dev-finish` verifies *after* its merge, because a local merge is revertible. `/pr`
-verifies *before* its push, because a push is not — and because a red branch costs a
-reviewer their time and a CI run.
-
-That is also why `/pr` has a scan step and `/dev-finish` does not. It greps the outgoing
-diff for secrets, run artifacts, and oversized files — `checks.sh sec` covers neither
-secrets nor file size, and a pushed key cannot be withdrawn, only rotated.
-
-`/pr` is the only command allowed to push, and only under a tight shape: the current
-branch, one remote branch named `<gh-login>/<slug>`, fast-forward only, after one
-confirmation. It never merges — a human does that on GitHub. Repeat runs update the same
-PR rather than opening a second one, which is the normal loop when a reviewer asks for
-changes. `/dev-finish` needs `.dev-state.md` and so only works after `/dev`; `/pr` treats
-it as optional and works after a plain `/work` too.
-
-**`/pr` is a quality gate, not a security gate.** It runs on the author's machine in the
-author's agent, so what it reports is a claim. If you need something unfakeable, that is CI
-on the pull request plus branch protection on the trunk — not a slash command.
+The only name rule: do not reuse one of the names in [The commands](#the-commands) above for a
+private skill. Anything else is yours, and two people picking the same private name never
+collide — those files never meet.
 
 ## Per-project setup
 
