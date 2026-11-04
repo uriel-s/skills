@@ -1,16 +1,15 @@
-Extract one short engineering lesson from recent changes — concepts, architecture, design, a little Python. Manual only. $ARGUMENTS
+Extract one short engineering lesson from recent changes — concepts, architecture, design, and idiomatic Python. Manual only. $ARGUMENTS
 
 ## Purpose
 
 A MANUAL, on-demand command — runs ONLY when I type `/learn`, never
 automatically, and NOT wired to /work or /dev in any way. When I invoke it,
-take the most recent change(s) and extract ONE short lesson that grows my
-engineering understanding — CONCEPTS, ARCHITECTURE, DESIGN DECISIONS, plus a
-little Python. Nice-to-have: quick, never blocks shipping.
+take the most recent change(s) and extract ONE short lesson that sharpens
+engineering depth — CONCEPTS, ARCHITECTURE, DESIGN DECISIONS, and idiomatic
+Python patterns. Nice-to-have: quick, never blocks shipping.
 
-Background about me: strong C / Node / React, limited Python. I direct AI to
-write the code — so the goal is professional growth (understanding the concepts
-and design behind what gets built), not learning to author code by hand.
+The goal is continuous architectural reflection: distilling the concepts,
+trade-offs, and language idioms behind what was built into a concise reference.
 
 ## Input
 
@@ -32,10 +31,10 @@ X" is the whole point.
 won, and what it costs. The "why" behind the architecture — this is what grows
 real judgment.
 
-**3. One Python thing** — one Python-specific construct in the diff a C/JS dev
-might not know (comprehension, context manager, dataclass, `is` vs `==`,
-truthiness, generator, unpacking, decorator...). Two lines, using the real line
-as the example. Light — just wiping up a bit of Python.
+**3. One Python idiom** — one notable Python construct or idiom in the diff
+(comprehension, context manager, dataclass, `is` vs `==`, truthiness,
+generator, unpacking, decorator, descriptor, protocol...). Two lines, using the
+real line as the example.
 
 **4. Worth remembering** — name one term or idea from this change to internalize
 or look up later. Low pressure.
@@ -50,8 +49,8 @@ lessons don't repeat and understanding compounds over time.
 ## Rules
 
 - SHORT — one lesson per run, skimmable in a minute. One good lesson beats five.
-- Assume I know programming (C / JS); skip loops, variables, basics. Focus on
-  concepts, design/architecture reasoning, and Python-specifics.
+- Skip basics (loops, variables, syntax). Focus on concepts, design/architecture
+  reasoning, and idiomatic Python specifics.
 - No praise, no filler. Teach.
 - NO planted or hypothetical bugs. Teach what IS there, not what could break.
 - If the change is trivial (docs, rename, formatting), say "nothing to learn

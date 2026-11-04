@@ -298,15 +298,12 @@ CRLF it dies on `$'\r': command not found`. Don't remove it on Windows.
 
 ## Maintainer docs
 
-Not needed to *use* the commands — read these before *changing* one.
+Not needed to *use* the commands — read this before *changing* one.
 
 - [CONVENTIONS.md](CONVENTIONS.md) — definitions shared across several command files
   (severity ladder, findings table, the `checks.sh` contract). Subagent prompts can't read
   files at runtime, so these blocks are copied into the commands by hand; each block lists
   where its copies live. Change one, change them all.
-- [BACKLOG.md](BACKLOG.md) — known rough edges, ranked. Pick from here.
-- [REMEDIATION.md](REMEDIATION.md) — the 2026-07-05 overhaul: what was broken, what was
-  decided, what shipped. History, not a to-do list.
 
 ## Deploying a change
 

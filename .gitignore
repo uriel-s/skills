@@ -28,6 +28,8 @@ id_rsa.*
 # are written for one reader and rarely read well by the others.
 /ROLLOUT.md
 /NOTES.md
+/BACKLOG.md
+/REMEDIATION.md
 
 # OS / editor cruft
 .DS_Store
